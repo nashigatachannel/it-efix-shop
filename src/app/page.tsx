@@ -1,65 +1,154 @@
-import Image from "next/image";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import ProductCard from "@/components/ProductCard";
+import OptionCard from "@/components/OptionCard";
+import { MAIN_PRODUCTS, OPTION_PRODUCTS } from "@/lib/products";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <>
+      <Header />
+      <main className="flex-1">
+        {/* Hero */}
+        <section className="relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-800 to-[#0a0f1e] py-24 sm:py-32">
+          <div
+            className="absolute inset-0 opacity-10"
+            aria-hidden="true"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(0deg, transparent, transparent 39px, #10b981 39px, #10b981 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, #10b981 39px, #10b981 40px)",
+            }}
+          />
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p className="text-emerald-400 text-sm font-bold tracking-[0.3em] uppercase mb-4">
+              Precision Agriculture Technology
+            </p>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-tight">
+              農機具の作業精度を
+              <br className="hidden sm:block" />
+              <span className="text-emerald-400">次のステージへ</span>
+            </h1>
+            <p className="mt-6 text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
+              E-FIXの電動ステアリングシステム <strong className="text-white">e-steer</strong> シリーズは、
+              農業機械に直接装着してGPS連動の自動操舵を実現。
+              直進精度の向上と作業負担の軽減を同時に達成します。
+            </p>
+            <div className="mt-10 flex flex-wrap justify-center gap-6 text-sm text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400" aria-hidden="true">●</span>
+                RTK-GPS対応
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400" aria-hidden="true">●</span>
+                全農機メーカー対応
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400" aria-hidden="true">●</span>
+                簡単取付
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Products */}
+        <section
+          id="products"
+          className="py-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8"
+          aria-labelledby="products-heading"
+        >
+          <header className="mb-12 text-center">
+            <h2
+              id="products-heading"
+              className="text-3xl font-black text-white"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              製品ラインナップ
+            </h2>
+            <p className="mt-3 text-slate-400">
+              用途と規模に合わせた3モデルをご用意しています
+            </p>
+          </header>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {MAIN_PRODUCTS.map((product, index) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                featured={index === MAIN_PRODUCTS.length - 1}
+              />
+            ))}
+          </div>
+
+          <p className="mt-4 text-center text-xs text-slate-500">
+            ※ 価格は全て税別表記です。消費税（10%）が別途かかります。
           </p>
+        </section>
+
+        {/* Divider */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <hr className="border-slate-700/50" />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {/* Options */}
+        <section
+          id="options"
+          className="py-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8"
+          aria-labelledby="options-heading"
+        >
+          <header className="mb-8">
+            <h2
+              id="options-heading"
+              className="text-2xl font-black text-white"
+            >
+              オプション
+            </h2>
+            <p className="mt-2 text-slate-400 text-sm">
+              取付作業や専用パーツを追加できます
+            </p>
+          </header>
+
+          <div className="space-y-4">
+            {OPTION_PRODUCTS.map((product) => (
+              <OptionCard key={product.id} product={product} />
+            ))}
+          </div>
+
+          <p className="mt-4 text-xs text-slate-500">
+            ※ 価格は全て税別表記です。消費税（10%）が別途かかります。
+          </p>
+        </section>
+
+        {/* About */}
+        <section className="py-16 bg-slate-900/40">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+              <div>
+                <p
+                  className="text-4xl font-black text-emerald-400"
+                  aria-label="精度プラスマイナス1センチメートル"
+                >
+                  ±1cm
+                </p>
+                <p className="text-sm text-slate-400 mt-2">
+                  MAX モデルの直進精度
+                </p>
+              </div>
+              <div>
+                <p className="text-4xl font-black text-emerald-400">全機種</p>
+                <p className="text-sm text-slate-400 mt-2">
+                  対応農機メーカー
+                </p>
+              </div>
+              <div>
+                <p className="text-4xl font-black text-emerald-400">現地</p>
+                <p className="text-sm text-slate-400 mt-2">
+                  出張取付サービス対応
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
-    </div>
+      <Footer />
+    </>
   );
 }
