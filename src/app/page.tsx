@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
@@ -46,6 +47,14 @@ export default function HomePage() {
                 <span className="text-emerald-400" aria-hidden="true">●</span>
                 簡単取付
               </div>
+            </div>
+            <div className="mt-10">
+              <Link
+                href="/order"
+                className="inline-block bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-4 px-10 rounded-xl text-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+              >
+                注文する
+              </Link>
             </div>
           </div>
         </section>
@@ -115,6 +124,21 @@ export default function HomePage() {
           <p className="mt-4 text-xs text-slate-500">
             ※ 価格は全て税別表記です。消費税（10%）が別途かかります。
           </p>
+        </section>
+
+        {/* CTA */}
+        <section className="py-16">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p className="text-slate-400 mb-4">
+              製品とオプションを選んで、かんたん注文
+            </p>
+            <Link
+              href="/order"
+              className="inline-block bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-4 px-12 rounded-xl text-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-[#0a0f1e]"
+            >
+              注文フォームへ進む
+            </Link>
+          </div>
         </section>
 
         {/* About */}

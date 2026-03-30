@@ -1,4 +1,3 @@
-import BuyButton from "@/components/BuyButton";
 import {
   type Product,
   calcTaxIncluded,
@@ -54,9 +53,6 @@ export default function ProductCard({ product, featured = false }: ProductCardPr
         </p>
       </div>
 
-      <div className="mt-4">
-        <BuyButton productId={product.id} />
-      </div>
     </article>
   );
 }

@@ -4,7 +4,8 @@ export type ProductId =
   | "e-steer-20-max"
   | "option-install"
   | "option-bracket"
-  | "option-sleeve";
+  | "option-sleeve"
+  | "donation-miso";
 
 export interface Product {
   id: ProductId;
@@ -24,6 +25,17 @@ export function calcTaxIncluded(priceExTax: number): number {
 export function formatPrice(price: number): string {
   return price.toLocaleString("ja-JP");
 }
+
+export const DONATION_PRODUCTS: Product[] = [
+  {
+    id: "donation-miso",
+    name: "支援・寄付（お味噌汁代）",
+    priceExTax: 100,
+    description: "E-FIXへの応援・支援です。ありがとうございます！",
+    features: ["お気持ち支援", "税込110円"],
+    isOption: true,
+  },
+];
 
 export const MAIN_PRODUCTS: Product[] = [
   {
@@ -91,7 +103,7 @@ export const OPTION_PRODUCTS: Product[] = [
   },
 ];
 
-export const ALL_PRODUCTS: Product[] = [...MAIN_PRODUCTS, ...OPTION_PRODUCTS];
+export const ALL_PRODUCTS: Product[] = [...MAIN_PRODUCTS, ...OPTION_PRODUCTS, ...DONATION_PRODUCTS];
 
 export function getProductById(id: ProductId): Product | undefined {
   return ALL_PRODUCTS.find((p) => p.id === id);

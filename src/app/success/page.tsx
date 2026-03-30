@@ -1,37 +1,95 @@
-import type { Metadata } from "next";
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
-export const metadata: Metadata = {
-  title: "ご注文ありがとうございます | E-FIX",
-};
+interface SessionStatus {
+  payment_status: string;
+  amount_total: number | null;
+  customer_email: string;
+}
 
-export default function SuccessPage() {
+function SuccessContent() {
+  const searchParams = useSearchParams();
+  const sessionId = searchParams.get("session_id");
+  const [status, setStatus] = useState<SessionStatus | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    fetch(`/api/session-status?session_id=${sessionId}`)
+      .then((res) => res.json())
+      .then((data: SessionStatus) => setStatus(data))
+      .catch(() => {});
+  }, [sessionId]);
+
+  const isBankTransfer = status?.payment_status === "unpaid";
+
   return (
     <>
       <Header />
       <main className="flex-1 flex items-center justify-center px-4 py-24">
         <div className="text-center max-w-lg">
           <div
-            className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-500/20 border border-emerald-500/40 mb-8"
+            className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-8 border ${
+              isBankTransfer
+                ? "bg-amber-500/20 border-amber-500/40"
+                : "bg-emerald-500/20 border-emerald-500/40"
+            }`}
             aria-hidden="true"
           >
-            <span className="text-4xl">✓</span>
+            <span className="text-4xl">{isBankTransfer ? "🏦" : "✓"}</span>
           </div>
+
           <h1 className="text-3xl font-black text-white mb-4">
-            ご注文ありがとうございます
+            {isBankTransfer
+              ? "ご注文を受け付けました"
+              : "ご注文ありがとうございます"}
           </h1>
-          <p className="text-slate-400 leading-relaxed mb-8">
-            決済が完了しました。ご登録のメールアドレス宛に確認メールをお送りします。
-            <br />
-            発送準備が整いましたら改めてご連絡いたします。
-          </p>
+
+          {isBankTransfer ? (
+            <div className="text-left space-y-4 mb-8">
+              <p className="text-slate-300 leading-relaxed">
+                銀行振込でのお支払いを選択いただきました。
+              </p>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 text-sm text-amber-200">
+                <p className="font-semibold mb-2">振込先口座について</p>
+                <p>
+                  振込先口座の情報は、ご登録のメールアドレス
+                  {status?.customer_email && (
+                    <span className="font-semibold">
+                      （{status.customer_email}）
+                    </span>
+                  )}
+                  宛にStripeからお送りしています。
+                </p>
+                <p className="mt-2">
+                  メールに記載された口座へ、期限内にお振込みください。
+                </p>
+              </div>
+              <p className="text-slate-400 text-sm">
+                入金確認後、発送準備を開始いたします。
+                確認メールが届かない場合は、迷惑メールフォルダをご確認ください。
+              </p>
+            </div>
+          ) : (
+            <p className="text-slate-400 leading-relaxed mb-8">
+              決済が完了しました。ご登録のメールアドレス宛に確認メールをお送りします。
+              <br />
+              発送準備が整いましたら改めてご連絡いたします。
+            </p>
+          )}
+
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 text-sm text-slate-400 mb-8 text-left">
             <p className="font-semibold text-slate-300 mb-2">お問い合わせ</p>
             <p>
               電話:{" "}
-              <a href="tel:08062824834" className="text-emerald-400 hover:underline">
+              <a
+                href="tel:08062824834"
+                className="text-emerald-400 hover:underline"
+              >
                 080-6282-4834
               </a>
             </p>
@@ -45,6 +103,7 @@ export default function SuccessPage() {
               </a>
             </p>
           </div>
+
           <Link
             href="/"
             className="inline-block bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 px-8 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-[#0a0f1e]"
@@ -55,5 +114,13 @@ export default function SuccessPage() {
       </main>
       <Footer />
     </>
+  );
+}
+
+export default function SuccessPage() {
+  return (
+    <Suspense>
+      <SuccessContent />
+    </Suspense>
   );
 }

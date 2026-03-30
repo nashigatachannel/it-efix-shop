@@ -14,7 +14,13 @@ export default function Header() {
             システム
           </span>
         </Link>
-        <nav>
+        <nav className="flex items-center gap-6">
+          <Link
+            href="/order"
+            className="text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+          >
+            注文する
+          </Link>
           <Link
             href="/legal"
             className="text-sm text-slate-400 hover:text-emerald-400 transition-colors"

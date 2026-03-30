@@ -1,4 +1,3 @@
-import BuyButton from "@/components/BuyButton";
 import {
   type Product,
   calcTaxIncluded,
@@ -38,9 +37,6 @@ export default function OptionCard({ product }: OptionCardProps) {
         <p className="font-bold text-emerald-400">
           税込 ¥{formatPrice(taxIncluded)}
         </p>
-      </div>
-      <div className="shrink-0 w-full sm:w-36">
-        <BuyButton productId={product.id} />
       </div>
     </article>
   );
