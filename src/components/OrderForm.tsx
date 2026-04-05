@@ -159,7 +159,7 @@ function Step1Products({
       <fieldset className="mb-8">
         <legend className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
           本体製品
-          <span className="text-xs text-rose-400 font-normal">必須</span>
+          <span className="text-xs text-slate-500 font-normal">任意</span>
         </legend>
         <div className="flex flex-col gap-3">
           {MAIN_PRODUCTS.map((product) => {
@@ -204,9 +204,6 @@ function Step1Products({
                         ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
                         <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
                       </span>
-                      <div className="text-xs text-slate-500">
-                        税別 ¥{formatPrice(product.priceExTax)}
-                      </div>
                     </div>
                   </div>
                   <p className="text-sm text-slate-400 mt-1">{product.description}</p>
@@ -243,7 +240,6 @@ function Step1Products({
                   onChange={() => onOptionToggle(product.id)}
                   className="sr-only"
                 />
-                {/* カスタムチェックボックス */}
                 <div
                   className={[
                     "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors",
@@ -273,9 +269,6 @@ function Step1Products({
                         ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
                         <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
                       </span>
-                      <div className="text-xs text-slate-500">
-                        税別 ¥{formatPrice(product.priceExTax)}
-                      </div>
                     </div>
                   </div>
                   <p className="text-sm text-slate-400 mt-1">{product.description}</p>
@@ -341,9 +334,6 @@ function Step1Products({
                         ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
                         <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
                       </span>
-                      <div className="text-xs text-slate-500">
-                        税別 ¥{formatPrice(product.priceExTax)}
-                      </div>
                     </div>
                   </div>
                   <p className="text-sm text-slate-400 mt-1">{product.description}</p>
@@ -690,7 +680,7 @@ function Step3Agreement({
     },
     {
       key: "taxCheck",
-      content: "消費税（10%）が別途かかることを了承します",
+      content: "表示価格は消費税（10%）込みであることを確認します",
     },
   ];
 

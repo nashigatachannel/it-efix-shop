@@ -42,14 +42,9 @@ export default function ProductCard({ product, featured = false }: ProductCardPr
       </ul>
 
       <div className="mt-6 border-t border-slate-700/50 pt-4">
-        <p className="text-slate-400 text-sm">
-          税別:{" "}
-          <span className="font-semibold text-white">
-            ¥{formatPrice(product.priceExTax)}
-          </span>
-        </p>
-        <p className="text-lg font-bold text-emerald-400 mt-0.5">
-          税込 ¥{formatPrice(taxIncluded)}
+        <p className="text-lg font-bold text-emerald-400">
+          ¥{formatPrice(taxIncluded)}
+          <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
         </p>
       </div>
 

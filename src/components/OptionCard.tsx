@@ -31,11 +31,9 @@ export default function OptionCard({ product }: OptionCardProps) {
         </ul>
       </div>
       <div className="shrink-0 text-right sm:text-left">
-        <p className="text-xs text-slate-500">
-          税別 ¥{formatPrice(product.priceExTax)}
-        </p>
         <p className="font-bold text-emerald-400">
-          税込 ¥{formatPrice(taxIncluded)}
+          ¥{formatPrice(taxIncluded)}
+          <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
         </p>
       </div>
     </article>

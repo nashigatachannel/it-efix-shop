@@ -88,7 +88,7 @@ export default function HomePage() {
           </div>
 
           <p className="mt-4 text-center text-xs text-slate-500">
-            ※ 価格は全て税別表記です。消費税（10%）が別途かかります。
+            ※ 価格は全て税込表記です。
           </p>
         </section>
 
@@ -111,7 +111,7 @@ export default function HomePage() {
               オプション
             </h2>
             <p className="mt-2 text-slate-400 text-sm">
-              取付作業や専用パーツを追加できます
+              操作性を向上させるアクセサリーを追加できます
             </p>
           </header>
 
@@ -122,7 +122,7 @@ export default function HomePage() {
           </div>
 
           <p className="mt-4 text-xs text-slate-500">
-            ※ 価格は全て税別表記です。消費税（10%）が別途かかります。
+            ※ 価格は全て税込表記です。
           </p>
         </section>
 
@@ -130,7 +130,7 @@ export default function HomePage() {
         <section className="py-16">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <p className="text-slate-400 mb-4">
-              製品とオプションを選んで、かんたん注文
+              製品を選んで、かんたん注文
             </p>
             <Link
               href="/order"
