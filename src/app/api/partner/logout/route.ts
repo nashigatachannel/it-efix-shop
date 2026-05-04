@@ -1,7 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { clearPartnerCookie } from "@/lib/partner-auth";
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   await clearPartnerCookie();
-  return NextResponse.json({ ok: true });
+  return NextResponse.redirect(
+    new URL("/partner/login", request.url),
+    303
+  );
 }
