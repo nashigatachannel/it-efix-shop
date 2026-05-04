@@ -22,6 +22,7 @@ interface CustomerInfo {
   machineMaker: string;
   machineModel: string;
   notes: string;
+  requestInvoice: boolean;
 }
 
 interface AgreementState {
@@ -39,6 +40,7 @@ const EMPTY_CUSTOMER: CustomerInfo = {
   machineMaker: "",
   machineModel: "",
   notes: "",
+  requestInvoice: false,
 };
 
 const EMPTY_AGREEMENT: AgreementState = {
@@ -380,7 +382,7 @@ function Step2Customer({
   onNext,
 }: {
   customer: CustomerInfo;
-  onChange: (field: keyof CustomerInfo, value: string) => void;
+  onChange: (field: keyof CustomerInfo, value: string | boolean) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -399,7 +401,8 @@ function Step2Customer({
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof CustomerInfo, string>> = {};
     for (const field of requiredFields) {
-      if (!customer[field].trim()) {
+      const val = customer[field];
+      if (typeof val === "string" && !val.trim()) {
         newErrors[field] = "入力してください";
       }
     }
@@ -612,6 +615,34 @@ function Step2Customer({
             placeholder="ご質問・ご要望があればご記入ください"
             className="w-full px-4 py-2.5 rounded-lg bg-slate-900/80 border border-slate-600 text-white placeholder-slate-500 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 resize-y"
           />
+        </div>
+
+        {/* 適格請求書オプション */}
+        <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4">
+          <label
+            htmlFor="requestInvoice"
+            className="flex items-start gap-3 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              id="requestInvoice"
+              checked={customer.requestInvoice}
+              onChange={(e) => onChange("requestInvoice", e.target.checked)}
+              className="mt-1 h-5 w-5 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-2 focus:ring-emerald-500/50"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-white">
+                適格請求書（インボイス）の発行を希望する
+              </div>
+              <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+                お支払い完了後、登録番号{" "}
+                <span className="font-mono text-slate-300">
+                  T2810703528253
+                </span>{" "}
+                入りの適格請求書PDFをご入力のメールアドレス宛に自動送信します。
+              </p>
+            </div>
+          </label>
         </div>
       </div>
 
@@ -867,6 +898,14 @@ function Step4Confirm({
               </dd>
             </div>
           )}
+          <div className={dlItemClass}>
+            <dt className={dtClass}>適格請求書</dt>
+            <dd className={ddClass}>
+              {customer.requestInvoice
+                ? "発行希望（T2810703528253 入りPDFを自動送付）"
+                : "不要"}
+            </dd>
+          </div>
         </dl>
       </div>
 
@@ -944,7 +983,10 @@ export default function OrderForm() {
     );
   };
 
-  const handleCustomerChange = (field: keyof CustomerInfo, value: string) => {
+  const handleCustomerChange = (
+    field: keyof CustomerInfo,
+    value: string | boolean
+  ) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -961,7 +1003,11 @@ export default function OrderForm() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds, customer }),
+        body: JSON.stringify({
+          productIds,
+          customer,
+          requestInvoice: customer.requestInvoice,
+        }),
       });
 
       if (!res.ok) {

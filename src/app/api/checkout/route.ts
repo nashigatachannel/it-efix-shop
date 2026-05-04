@@ -5,6 +5,11 @@ import {
   calcTaxIncluded,
   type ProductId,
 } from "@/lib/products";
+import {
+  JP_TAX_RATE_ID,
+  INVOICE_FOOTER,
+  INVOICE_CUSTOM_FIELDS,
+} from "@/lib/invoice-config";
 
 interface CustomerInfo {
   name: string;
@@ -20,6 +25,7 @@ interface CustomerInfo {
 interface CheckoutRequestBody {
   productIds: ProductId[];
   customer: CustomerInfo;
+  requestInvoice?: boolean;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -31,7 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { productIds, customer } = body;
+  const { productIds, customer, requestInvoice } = body;
 
   // バリデーション
   if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
@@ -67,6 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     name: customer.name,
     email: customer.email,
     phone: customer.phone,
+    preferred_locales: ["ja"],
     metadata: {
       postalCode: customer.postalCode,
       address: customer.address,
@@ -96,11 +103,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         unit_amount: calcTaxIncluded(product!.priceExTax),
       },
       quantity: 1,
+      // 適格請求書対応: 日本の消費税10%（内税）を明示
+      tax_rates: [JP_TAX_RATE_ID],
     })),
     mode: "payment",
     success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/cancel`,
     locale: "ja",
+    ...(requestInvoice && {
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `E-FIX ご注文 (${products.map((p) => p!.name).join(", ")})`,
+          footer: INVOICE_FOOTER,
+          custom_fields: INVOICE_CUSTOM_FIELDS,
+          rendering_options: {
+            amount_tax_display: "include_inclusive_tax",
+          },
+          metadata: {
+            orderType: "main_product",
+            customerName: customer.name,
+          },
+        },
+      },
+    }),
     metadata: {
       productIds: productIds.join(","),
       customerName: customer.name,
@@ -111,6 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       machineMaker: customer.machineMaker,
       machineModel: customer.machineModel,
       notes: customer.notes ?? "",
+      requestInvoice: requestInvoice ? "true" : "false",
     },
   });
 
