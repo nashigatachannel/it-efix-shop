@@ -13,12 +13,24 @@ export default function Footer() {
               農機具電動ステアリングシステム
             </p>
           </div>
-          <nav className="flex flex-col sm:flex-row gap-3 text-sm text-slate-400">
+          <nav className="flex flex-col sm:flex-row gap-3 sm:gap-5 text-sm text-slate-400">
             <Link
               href="/legal"
               className="hover:text-emerald-400 transition-colors"
             >
               特定商取引法に基づく表記
+            </Link>
+            <Link
+              href="/terms"
+              className="hover:text-emerald-400 transition-colors"
+            >
+              利用規約
+            </Link>
+            <Link
+              href="/privacy"
+              className="hover:text-emerald-400 transition-colors"
+            >
+              プライバシーポリシー
             </Link>
           </nav>
         </div>
