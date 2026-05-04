@@ -12,6 +12,7 @@ import {
   INVOICE_FOOTER,
   INVOICE_CUSTOM_FIELDS,
 } from "@/lib/invoice-config";
+import { getCurrentPartner } from "@/lib/partner-auth";
 
 interface CustomerInfo {
   name: string;
@@ -51,6 +52,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { productIds, lines, customer, requestInvoice } = body;
   const priceTier: PriceTier = body.priceTier ?? "retail";
+
+  // 卸/特価卸のときはセッションcookieからpartnerIdを取得
+  let partnerId = "";
+  if (priceTier !== "retail") {
+    const session = await getCurrentPartner();
+    if (!session) {
+      return NextResponse.json(
+        { error: "卸取引のログインセッションが切れています" },
+        { status: 401 }
+      );
+    }
+    if (session.tier !== priceTier) {
+      return NextResponse.json(
+        { error: "ログイン中の階層と注文階層が一致しません" },
+        { status: 403 }
+      );
+    }
+    partnerId = session.partnerId;
+  }
 
   if (!customer || !customer.name || !customer.email) {
     return NextResponse.json(
@@ -196,6 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       notes: customer.notes ?? "",
       requestInvoice: requestInvoice ? "true" : "false",
       priceTier,
+      partnerId,
     },
   });
 

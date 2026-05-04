@@ -55,6 +55,24 @@ function paymentMethodLabel(session: Stripe.Checkout.Session): string {
   return types.join(",") || "不明";
 }
 
+function paymentDueLabel(session: Stripe.Checkout.Session): string {
+  // 銀行振込の場合は customer_balance.bank_transfer.payment_intent から振込期限が来るが、
+  // Checkout Session 自体の expires_at をひとまず期限とする (24h以内に振込URL発行)。
+  // 入金完了後にここはWebhook側で「入金済」表示に置き換わる。
+  if (session.payment_status === "paid") {
+    return "入金済";
+  }
+  if (session.expires_at) {
+    return new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(session.expires_at * 1000)) + " まで";
+  }
+  return "";
+}
+
 function buildSheetRow(
   session: Stripe.Checkout.Session,
   serialNumber: number
@@ -87,6 +105,8 @@ function buildSheetRow(
     metadata.machineModel ?? "",
     metadata.notes ?? "",
     requestInvoice ? "希望" : "",
+    metadata.partnerId ?? "",
+    paymentDueLabel(session),
   ];
 }
 
@@ -130,7 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${SHEET_NAME}!A:Q`,
+        range: `${SHEET_NAME}!A:S`,
         valueInputOption: "USER_ENTERED",
         requestBody: {
           values: [row],

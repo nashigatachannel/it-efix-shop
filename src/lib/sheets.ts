@@ -32,6 +32,8 @@ export interface WebOrderRow {
   machineModel: string;
   notes: string;
   invoiceRequested: boolean;
+  partnerId: string;
+  paymentDueAt: string;
 }
 
 function toNumberOrNull(v: unknown): number | null {
@@ -40,15 +42,8 @@ function toNumberOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function fetchWebOrders(): Promise<WebOrderRow[]> {
-  if (!SPREADSHEET_ID) return [];
-  const sheets = getSheetsClient();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${WEB_ORDERS_SHEET}!A2:Q`,
-  });
-  const rows = res.data.values ?? [];
-  return rows.map((row): WebOrderRow => ({
+function parseRow(row: unknown[]): WebOrderRow {
+  return {
     serialNumber: toNumberOrNull(row[0]),
     subId: String(row[1] ?? ""),
     orderedAt: String(row[2] ?? ""),
@@ -66,5 +61,25 @@ export async function fetchWebOrders(): Promise<WebOrderRow[]> {
     machineModel: String(row[14] ?? ""),
     notes: String(row[15] ?? ""),
     invoiceRequested: row[16] === "希望",
-  }));
+    partnerId: String(row[17] ?? ""),
+    paymentDueAt: String(row[18] ?? ""),
+  };
+}
+
+export async function fetchWebOrders(): Promise<WebOrderRow[]> {
+  if (!SPREADSHEET_ID) return [];
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${WEB_ORDERS_SHEET}!A2:S`,
+  });
+  return (res.data.values ?? []).map(parseRow);
+}
+
+export async function fetchPartnerOrders(
+  partnerId: string
+): Promise<WebOrderRow[]> {
+  if (!SPREADSHEET_ID || !partnerId) return [];
+  const all = await fetchWebOrders();
+  return all.filter((row) => row.partnerId === partnerId);
 }
