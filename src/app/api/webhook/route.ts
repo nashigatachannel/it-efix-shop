@@ -5,6 +5,7 @@ import { google } from "googleapis";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!;
+const SHEET_NAME = "Web注文";
 
 async function getGoogleSheetsClient() {
   const credentials = JSON.parse(
@@ -29,23 +30,63 @@ function toJstDateString(date: Date): string {
   }).format(date);
 }
 
-function buildSheetRow(session: Stripe.Checkout.Session): string[] {
+async function getNextSerialNumber(
+  sheets: ReturnType<typeof google.sheets>
+): Promise<number> {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2:A`,
+  });
+  const values = res.data.values ?? [];
+  let maxSerial = 0;
+  for (const row of values) {
+    const parsed = Number(row[0]);
+    if (Number.isFinite(parsed) && parsed > maxSerial) {
+      maxSerial = parsed;
+    }
+  }
+  return maxSerial + 1;
+}
+
+function paymentMethodLabel(session: Stripe.Checkout.Session): string {
+  const types = session.payment_method_types ?? [];
+  if (types.includes("customer_balance")) return "銀行振込";
+  if (types.includes("card")) return "カード";
+  return types.join(",") || "不明";
+}
+
+function buildSheetRow(
+  session: Stripe.Checkout.Session,
+  serialNumber: number
+): (string | number)[] {
   const metadata = session.metadata ?? {};
+  const requestInvoice =
+    metadata.requestInvoice === "true" || metadata.requestInvoice === "1";
+  const isCustom = metadata.type === "custom_payment";
+
+  // 通常注文は productIds、カスタム決済は description（明細サマリ）
+  const modelDisplay = isCustom
+    ? metadata.description ?? ""
+    : metadata.productIds ?? "";
 
   return [
+    serialNumber,
+    "", // サブID（分割発注時に手入力）
     toJstDateString(new Date()),
     session.id,
-    metadata.productIds ?? "",
-    session.amount_total != null ? String(session.amount_total) : "",
     session.payment_status ?? "",
+    paymentMethodLabel(session),
+    modelDisplay,
+    session.amount_total ?? "",
     metadata.customerName ?? "",
+    metadata.customerEmail ?? session.customer_email ?? "",
+    metadata.customerPhone ?? "",
     metadata.customerPostalCode ?? "",
     metadata.customerAddress ?? "",
-    metadata.customerPhone ?? "",
-    metadata.customerEmail ?? session.customer_email ?? "",
     metadata.machineMaker ?? "",
     metadata.machineModel ?? "",
     metadata.notes ?? "",
+    requestInvoice ? "希望" : "",
   ];
 }
 
@@ -65,14 +106,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    // 署名検証失敗時、bodyをパースしてフォールバック（デバッグ用）
     console.error("Webhook signature verification failed:", err);
-    try {
-      event = JSON.parse(body) as Stripe.Event;
-      console.warn("Signature verification skipped - using raw event body");
-    } catch {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-    }
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
   if (
@@ -81,30 +116,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   ) {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    // カード決済: completed時にpaid → 即記録
-    // 銀行振込: completed時はunpaid → スキップ、async_payment_succeeded時にpaid → 記録
     if (session.payment_status !== "paid") {
       console.log(
-        `Skipping Sheets write: session=${session.id} payment_status=${session.payment_status} (awaiting bank transfer)`
+        `Skipping Sheets write: session=${session.id} status=${session.payment_status}`
       );
       return NextResponse.json({ received: true });
     }
 
-    const row = buildSheetRow(session);
-
     try {
       const sheets = await getGoogleSheetsClient();
+      const serialNumber = await getNextSerialNumber(sheets);
+      const row = buildSheetRow(session, serialNumber);
+
       await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        range: "シート1!A:M",
+        range: `${SHEET_NAME}!A:Q`,
         valueInputOption: "USER_ENTERED",
         requestBody: {
           values: [row],
         },
       });
-      console.log(`Order written to Sheets: session=${session.id} (${event.type})`);
+      console.log(
+        `Order written to Sheets: serial=${serialNumber} session=${session.id} (${event.type})`
+      );
     } catch (err) {
-      // Sheets書き込み失敗してもStripeには200を返す（リトライ無限ループ防止）
       console.error("Failed to write to Google Sheets:", err);
     }
   }
@@ -114,7 +149,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error(
       `Bank transfer payment failed: session=${session.id} customer=${session.metadata?.customerName ?? "unknown"}`
     );
-    // TODO: 入金失敗時の通知（メール等）が必要なら追加
   }
 
   return NextResponse.json({ received: true });
