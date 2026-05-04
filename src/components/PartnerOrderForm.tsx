@@ -3,16 +3,26 @@
 import { useMemo, useState } from "react";
 import {
   MAIN_PRODUCTS,
+  OPTION_PRODUCTS,
   calcTaxIncluded,
   formatPrice,
   getPriceForTier,
   type PriceTier,
   type ProductId,
+  type Product,
 } from "@/lib/products";
 
-interface WholesaleOrderFormProps {
+interface PartnerOrderFormProps {
   tier: PriceTier;
   tierLabel: string;
+  defaults: {
+    companyName: string;
+    contactName: string;
+    email: string;
+    phone: string;
+    postalCode: string;
+    address: string;
+  };
 }
 
 interface CustomerInput {
@@ -25,59 +35,64 @@ interface CustomerInput {
   notes: string;
 }
 
-const EMPTY_CUSTOMER: CustomerInput = {
-  companyName: "",
-  contactName: "",
-  email: "",
-  phone: "",
-  postalCode: "",
-  address: "",
-  notes: "",
-};
+interface PriceItem {
+  id: ProductId;
+  name: string;
+  description: string;
+  priceExTax: number;
+  priceIncTax: number;
+}
 
-export default function WholesaleOrderForm({
+function buildPriceItems(products: Product[], tier: PriceTier): PriceItem[] {
+  return products
+    .filter((p) => getPriceForTier(p, tier) !== null)
+    .map((p) => {
+      const ex = getPriceForTier(p, tier) ?? p.priceExTax;
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        priceExTax: ex,
+        priceIncTax: calcTaxIncluded(ex),
+      };
+    });
+}
+
+export default function PartnerOrderForm({
   tier,
   tierLabel,
-}: WholesaleOrderFormProps) {
+  defaults,
+}: PartnerOrderFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [customer, setCustomer] = useState<CustomerInput>(EMPTY_CUSTOMER);
+  const [customer, setCustomer] = useState<CustomerInput>({
+    companyName: defaults.companyName,
+    contactName: defaults.contactName,
+    email: defaults.email,
+    phone: defaults.phone,
+    postalCode: defaults.postalCode,
+    address: defaults.address,
+    notes: "",
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const orderedProducts = useMemo(
-    () =>
-      MAIN_PRODUCTS.filter((p) => getPriceForTier(p, tier) !== null).map(
-        (p) => {
-          const priceExTax = getPriceForTier(p, tier) ?? p.priceExTax;
-          return {
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            priceExTax,
-            priceIncTax: calcTaxIncluded(priceExTax),
-          };
-        }
-      ),
-    [tier]
-  );
+  const products = useMemo(() => buildPriceItems(MAIN_PRODUCTS, tier), [tier]);
+  const options = useMemo(() => buildPriceItems(OPTION_PRODUCTS, tier), [tier]);
 
+  const allItems = useMemo(() => [...products, ...options], [products, options]);
   const lines = useMemo(
     () =>
-      orderedProducts
-        .map((p) => ({
-          product: p,
-          quantity: quantities[p.id] ?? 0,
-        }))
+      allItems
+        .map((p) => ({ item: p, quantity: quantities[p.id] ?? 0 }))
         .filter((l) => l.quantity > 0),
-    [orderedProducts, quantities]
+    [allItems, quantities]
   );
-
   const totalIncTax = lines.reduce(
-    (sum, l) => sum + l.product.priceIncTax * l.quantity,
+    (sum, l) => sum + l.item.priceIncTax * l.quantity,
     0
   );
 
-  const handleQtyChange = (id: string, raw: string) => {
+  const handleQty = (id: string, raw: string) => {
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0) {
       setQuantities((prev) => ({ ...prev, [id]: 0 }));
@@ -91,7 +106,7 @@ export default function WholesaleOrderForm({
     setError(null);
 
     if (lines.length === 0) {
-      setError("数量を1台以上指定してください");
+      setError("製品またはオプションの数量を1以上指定してください");
       return;
     }
     if (!customer.companyName.trim() || !customer.contactName.trim()) {
@@ -114,7 +129,7 @@ export default function WholesaleOrderForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lines: lines.map((l) => ({
-            productId: l.product.id as ProductId,
+            productId: l.item.id as ProductId,
             quantity: l.quantity,
           })),
           customer: {
@@ -128,7 +143,7 @@ export default function WholesaleOrderForm({
             notes: customer.notes,
           },
           priceTier: tier,
-          requestInvoice: true, // 卸取引は基本適格請求書発行
+          requestInvoice: true,
         }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
@@ -147,60 +162,73 @@ export default function WholesaleOrderForm({
   const inputClass =
     "w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50";
 
+  const tierAccent =
+    tier === "distributor" ? "text-amber-400" : "text-emerald-400";
+
+  const renderRow = (p: PriceItem) => (
+    <div
+      key={p.id}
+      className="flex flex-col sm:flex-row sm:items-center gap-3 bg-slate-950/40 border border-slate-800 rounded-lg p-4"
+    >
+      <div className="flex-1">
+        <p className="text-white font-bold">{p.name}</p>
+        <p className="text-xs text-slate-500 mt-1">{p.description}</p>
+      </div>
+      <div className="text-right text-sm">
+        <p className={`${tierAccent} font-mono`}>
+          ¥{formatPrice(p.priceExTax)}{" "}
+          <span className="text-xs text-slate-500">税抜</span>
+        </p>
+        <p className="text-slate-400 font-mono text-xs">
+          ¥{formatPrice(p.priceIncTax)} 税込
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <label htmlFor={`qty-${p.id}`} className="text-xs text-slate-400">
+          数量
+        </label>
+        <input
+          id={`qty-${p.id}`}
+          type="number"
+          min="0"
+          max="99"
+          value={quantities[p.id] ?? 0}
+          onChange={(e) => handleQty(p.id, e.target.value)}
+          className="w-16 px-2 py-1.5 bg-slate-950 border border-slate-700 rounded text-white text-center font-mono"
+        />
+      </div>
+    </div>
+  );
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
-        <h2 className="text-lg font-bold text-emerald-400 mb-4">
-          {tierLabel}価格表 / 数量入力
+        <h2 className={`text-lg font-bold ${tierAccent} mb-4`}>
+          {tierLabel}価格表 / 製品セット
         </h2>
-        <div className="space-y-4">
-          {orderedProducts.map((p) => (
-            <div
-              key={p.id}
-              className="flex flex-col sm:flex-row sm:items-center gap-3 bg-slate-950/40 border border-slate-800 rounded-lg p-4"
-            >
-              <div className="flex-1">
-                <p className="text-white font-bold">{p.name}</p>
-                <p className="text-xs text-slate-500 mt-1">{p.description}</p>
-              </div>
-              <div className="text-right text-sm">
-                <p className="text-emerald-300 font-mono">
-                  ¥{formatPrice(p.priceExTax)}{" "}
-                  <span className="text-xs text-slate-500">税抜</span>
-                </p>
-                <p className="text-slate-400 font-mono text-xs">
-                  ¥{formatPrice(p.priceIncTax)} 税込
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor={`qty-${p.id}`} className="text-xs text-slate-400">
-                  数量
-                </label>
-                <input
-                  id={`qty-${p.id}`}
-                  type="number"
-                  min="0"
-                  max="99"
-                  value={quantities[p.id] ?? 0}
-                  onChange={(e) => handleQtyChange(p.id, e.target.value)}
-                  className="w-16 px-2 py-1.5 bg-slate-950 border border-slate-700 rounded text-white text-center font-mono"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 pt-4 border-t border-slate-800 flex items-baseline justify-between">
+        <div className="space-y-4">{products.map(renderRow)}</div>
+      </section>
+
+      {options.length > 0 && (
+        <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+          <h2 className={`text-lg font-bold ${tierAccent} mb-4`}>
+            オプション部品
+          </h2>
+          <div className="space-y-4">{options.map(renderRow)}</div>
+        </section>
+      )}
+
+      <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+        <div className="flex items-baseline justify-between">
           <span className="text-slate-300">合計（税込）</span>
-          <span className="text-2xl text-emerald-400 font-black font-mono">
+          <span className={`text-2xl ${tierAccent} font-black font-mono`}>
             ¥{formatPrice(totalIncTax)}
           </span>
         </div>
       </section>
 
       <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
-        <h2 className="text-lg font-bold text-emerald-400 mb-2">
-          ご請求先・連絡先
-        </h2>
+        <h2 className={`text-lg font-bold ${tierAccent}`}>ご請求先・連絡先</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label
@@ -330,7 +358,7 @@ export default function WholesaleOrderForm({
           </div>
         </div>
         <p className="text-xs text-slate-500">
-          適格請求書（登録番号 T2810703528253）はご注文後にメールで自動送付されます。
+          適格請求書（登録番号 T2810703528253）はご注文後、入金完了時にメールで自動送付されます。
         </p>
       </section>
 
@@ -343,7 +371,11 @@ export default function WholesaleOrderForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+        className={`w-full py-4 rounded-xl ${
+          tier === "distributor"
+            ? "bg-amber-600 hover:bg-amber-500"
+            : "bg-emerald-600 hover:bg-emerald-500"
+        } text-white font-black text-lg disabled:opacity-40 disabled:cursor-not-allowed`}
       >
         {isSubmitting ? "決済セッション生成中…" : "決済へ進む"}
       </button>

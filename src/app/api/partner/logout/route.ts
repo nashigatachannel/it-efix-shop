@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { clearRoleCookie } from "@/lib/role-auth";
+import { clearPartnerCookie } from "@/lib/partner-auth";
 
 export async function POST(): Promise<NextResponse> {
-  await clearRoleCookie("distributor");
+  await clearPartnerCookie();
   return NextResponse.json({ ok: true });
 }

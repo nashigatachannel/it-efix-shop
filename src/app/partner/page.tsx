@@ -1,0 +1,76 @@
+import { redirect } from "next/navigation";
+import { getCurrentPartner, fetchPartnerById } from "@/lib/partner-auth";
+import PartnerOrderForm from "@/components/PartnerOrderForm";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export default async function PartnerPage() {
+  const session = await getCurrentPartner();
+  if (!session) {
+    redirect("/partner/login");
+  }
+  const profile = await fetchPartnerById(session.partnerId);
+  if (!profile) {
+    // マスタから消えた / 無効化された
+    redirect("/partner/login?next=/partner");
+  }
+
+  const tierLabel = profile.tier === "distributor" ? "特価卸" : "通常卸";
+  const accent =
+    profile.tier === "distributor" ? "text-amber-400" : "text-emerald-400";
+
+  return (
+    <div className="min-h-screen bg-slate-950">
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-40">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`text-xl font-black tracking-widest ${accent}`}>
+              E-FIX
+            </span>
+            <span className="text-xs text-slate-500 border-l border-slate-700 pl-2">
+              {tierLabel} / {profile.companyName}
+            </span>
+          </div>
+          <form action="/api/partner/logout" method="post">
+            <button
+              type="submit"
+              className="text-xs text-slate-400 hover:text-red-400"
+            >
+              ログアウト
+            </button>
+          </form>
+        </div>
+      </header>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="mb-8">
+          <h1 className="text-2xl font-black text-white">
+            {profile.companyName} 様 ご発注
+          </h1>
+          <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+            {tierLabel}価格でのご発注ページです。製品セットおよびオプション部品から数量をご指定ください。
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            ご担当者: {profile.contactName || "—"} ／ ID:{" "}
+            <span className="font-mono">{profile.partnerId}</span>
+          </p>
+        </div>
+        <PartnerOrderForm
+          tier={profile.tier}
+          tierLabel={tierLabel}
+          defaults={{
+            companyName: profile.companyName,
+            contactName: profile.contactName,
+            email: profile.email,
+            phone: profile.phone,
+            postalCode: profile.postalCode,
+            address: profile.address,
+          }}
+        />
+        <p className="mt-8 text-xs text-slate-500">
+          ※ 決済完了後、適格請求書（登録番号 T2810703528253）が自動でメール送付されます。
+        </p>
+      </main>
+    </div>
+  );
+}

@@ -6,8 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/wholesale";
+  const next = searchParams.get("next") ?? "/partner";
 
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +20,10 @@ function LoginForm() {
     setError(null);
 
     try {
-      const res = await fetch("/api/wholesale/login", {
+      const res = await fetch("/api/partner/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -48,10 +49,27 @@ function LoginForm() {
           <p className="text-2xl font-black tracking-widest text-emerald-400">
             E-FIX
           </p>
-          <p className="text-sm text-slate-300 mt-1">通常卸 専用ページ</p>
+          <p className="text-sm text-slate-300 mt-1">販売店様 専用ページ</p>
           <p className="text-xs text-slate-500 mt-1">
-            アクセスにはパスワードが必要です
+            通常卸 / 特価卸 共通ログイン
           </p>
+        </div>
+        <div>
+          <label
+            htmlFor="email"
+            className="block text-xs font-semibold text-slate-300 mb-1"
+          >
+            メールアドレス
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="username"
+            className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          />
         </div>
         <div>
           <label
@@ -83,14 +101,14 @@ function LoginForm() {
           {isSubmitting ? "認証中…" : "ログイン"}
         </button>
         <p className="text-xs text-slate-600 text-center">
-          24時間有効のセッションを発行します
+          24時間有効のセッションを発行します。アカウントの発行・パスワード再発行は E-FIX 担当者までご連絡ください。
         </p>
       </form>
     </main>
   );
 }
 
-export default function WholesaleLoginPage() {
+export default function PartnerLoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
       <LoginForm />

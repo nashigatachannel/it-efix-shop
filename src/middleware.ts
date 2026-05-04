@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const ADMIN_COOKIE = "efix_admin";
-const WHOLESALE_COOKIE = "efix_wholesale";
-const DISTRIBUTOR_COOKIE = "efix_distributor";
+const PARTNER_COOKIE = "efix_partner";
 
 async function isValidJwt(
   token: string | undefined,
   secret: string | undefined,
-  expectedRole?: "wholesale" | "distributor"
+  validate?: (payload: Record<string, unknown>) => boolean
 ): Promise<boolean> {
   if (!token || !secret || secret.length < 32) return false;
   try {
@@ -17,8 +16,8 @@ async function isValidJwt(
       new TextEncoder().encode(secret),
       { algorithms: ["HS256"] }
     );
-    if (expectedRole) {
-      return payload.role === expectedRole;
+    if (validate && !validate(payload as Record<string, unknown>)) {
+      return false;
     }
     return true;
   } catch {
@@ -28,6 +27,18 @@ async function isValidJwt(
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Legacy redirects: /wholesale, /distributor は /partner に統合
+  if (
+    pathname === "/wholesale" ||
+    pathname === "/wholesale/login" ||
+    pathname === "/distributor" ||
+    pathname === "/distributor/login"
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.endsWith("/login") ? "/partner/login" : "/partner";
+    return NextResponse.redirect(url);
+  }
 
   // ===== Admin =====
   if (pathname.startsWith("/admin/login") || pathname === "/api/admin/login") {
@@ -47,50 +58,32 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // ===== Wholesale =====
+  // ===== Partner (卸/特価卸) =====
   if (
-    pathname.startsWith("/wholesale/login") ||
-    pathname === "/api/wholesale/login"
+    pathname.startsWith("/partner/login") ||
+    pathname === "/api/partner/login"
   ) {
     return NextResponse.next();
   }
   if (
-    pathname.startsWith("/wholesale") ||
-    pathname.startsWith("/api/wholesale")
+    pathname.startsWith("/partner") ||
+    pathname.startsWith("/api/partner")
   ) {
-    const token = request.cookies.get(WHOLESALE_COOKIE)?.value;
-    if (await isValidJwt(token, process.env.ROLE_AUTH_SECRET, "wholesale")) {
-      return NextResponse.next();
-    }
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const url = request.nextUrl.clone();
-    url.pathname = "/wholesale/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
-  }
+    const token = request.cookies.get(PARTNER_COOKIE)?.value;
+    const valid = await isValidJwt(
+      token,
+      process.env.PARTNER_AUTH_SECRET,
+      (p) =>
+        typeof p.partnerId === "string" &&
+        (p.tier === "wholesale" || p.tier === "distributor")
+    );
+    if (valid) return NextResponse.next();
 
-  // ===== Distributor (特価卸) =====
-  if (
-    pathname.startsWith("/distributor/login") ||
-    pathname === "/api/distributor/login"
-  ) {
-    return NextResponse.next();
-  }
-  if (
-    pathname.startsWith("/distributor") ||
-    pathname.startsWith("/api/distributor")
-  ) {
-    const token = request.cookies.get(DISTRIBUTOR_COOKIE)?.value;
-    if (await isValidJwt(token, process.env.ROLE_AUTH_SECRET, "distributor")) {
-      return NextResponse.next();
-    }
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const url = request.nextUrl.clone();
-    url.pathname = "/distributor/login";
+    url.pathname = "/partner/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
@@ -102,9 +95,9 @@ export const config = {
   matcher: [
     "/admin/:path*",
     "/api/admin/:path*",
+    "/partner/:path*",
+    "/api/partner/:path*",
     "/wholesale/:path*",
-    "/api/wholesale/:path*",
     "/distributor/:path*",
-    "/api/distributor/:path*",
   ],
 };
