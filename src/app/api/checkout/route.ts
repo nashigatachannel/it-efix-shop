@@ -157,7 +157,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }),
     mode: "payment",
     success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/cancel`,
+    cancel_url:
+      priceTier === "retail" ? `${baseUrl}/cancel` : `${baseUrl}/partner`,
     locale: "ja",
     ...(requestInvoice && {
       invoice_creation: {
