@@ -12,16 +12,31 @@ export interface Product {
   id: ProductId;
   name: string;
   priceExTax: number;
+  /** 通常卸価格(税抜)。未設定なら卸ページで非販売 */
+  wholesalePriceExTax?: number;
+  /** 特価卸価格(税抜)。未設定なら特価卸ページで非販売 */
+  distributorPriceExTax?: number;
   description: string;
   features: string[];
   isOption?: boolean;
   image?: string;
 }
 
+export type PriceTier = "retail" | "wholesale" | "distributor";
+
 export const TAX_RATE = 0.1;
 
 export function calcTaxIncluded(priceExTax: number): number {
   return Math.floor(priceExTax * (1 + TAX_RATE));
+}
+
+export function getPriceForTier(p: Product, tier: PriceTier): number | null {
+  if (tier === "retail") return p.priceExTax;
+  if (tier === "wholesale")
+    return p.wholesalePriceExTax ?? p.priceExTax;
+  if (tier === "distributor")
+    return p.distributorPriceExTax ?? p.wholesalePriceExTax ?? p.priceExTax;
+  return p.priceExTax;
 }
 
 export function formatPrice(price: number): string {
@@ -44,6 +59,8 @@ export const MAIN_PRODUCTS: Product[] = [
     id: "e-steer-10",
     name: "e-steer 10",
     priceExTax: 909_091,
+    wholesalePriceExTax: 650_000,
+    distributorPriceExTax: 610_000,
     description: "スタンダードモデル。小〜中型農機に対応する入門機。",
     features: [
       "小〜中型農機対応",
@@ -56,6 +73,8 @@ export const MAIN_PRODUCTS: Product[] = [
     id: "e-steer-20",
     name: "e-steer 20",
     priceExTax: 1_045_455,
+    wholesalePriceExTax: 720_000,
+    distributorPriceExTax: 650_000,
     description: "高精度モデル。RTK-GPS対応で直進精度を大幅向上。",
     features: [
       "RTK-GPS対応",
@@ -68,6 +87,8 @@ export const MAIN_PRODUCTS: Product[] = [
     id: "e-steer-20-max",
     name: "e-steer 20 MAX",
     priceExTax: 1_181_819,
+    wholesalePriceExTax: 800_000,
+    distributorPriceExTax: 700_000,
     description: "フラッグシップモデル。最高精度と最大トルクを両立。",
     features: [
       "最高精度 ±1cm",
