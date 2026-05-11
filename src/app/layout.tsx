@@ -13,9 +13,43 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://efix-shop.jp"),
   title: "E-FIX | 農機具電動ステアリングシステム",
   description:
-    "E-FIXは農業機械向け電動ステアリングシステムを販売しています。e-steerシリーズで精密な自動操舵を実現します。",
+    "E-FIXは農業機械向け電動ステアリングシステム e-steer を販売しています。トラクタやコンバインに後付けで自動操舵を導入し、直進精度 ±2cm の高精度作業を実現します。",
+  keywords: [
+    "農機具",
+    "電動ステアリング",
+    "自動操舵",
+    "GPS",
+    "RTK",
+    "後付け",
+    "トラクター",
+    "コンバイン",
+    "e-steer",
+    "E-FIX",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "ja_JP",
+    url: "https://efix-shop.jp/",
+    siteName: "E-FIX",
+    title: "E-FIX | 農機具電動ステアリングシステム",
+    description:
+      "農業機械向け電動ステアリングシステム e-steer 公式販売サイト。後付けで自動操舵を導入し、精密な直進作業を実現します。",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
+  },
 };
 
 export default function RootLayout({
