@@ -146,14 +146,9 @@ export default function HomePage() {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
               <div>
-                <p
-                  className="text-4xl font-black text-emerald-400"
-                  aria-label="精度プラスマイナス1センチメートル"
-                >
-                  ±1cm
-                </p>
+                <p className="text-4xl font-black text-emerald-400">RTK</p>
                 <p className="text-sm text-slate-400 mt-2">
-                  MAX モデルの直進精度
+                  高精度GPS連動・自動操舵
                 </p>
               </div>
               <div>

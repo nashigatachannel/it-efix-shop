@@ -20,6 +20,8 @@ export interface Product {
   features: string[];
   isOption?: boolean;
   image?: string;
+  /** 販売停止フラグ。trueの場合、新規販売ページから除外（履歴表示用に定義は残す） */
+  isDiscontinued?: boolean;
 }
 
 export type PriceTier = "retail" | "wholesale" | "distributor";
@@ -54,33 +56,34 @@ export const DONATION_PRODUCTS: Product[] = [
   },
 ];
 
-export const MAIN_PRODUCTS: Product[] = [
+/** 履歴互換性のために残す販売停止製品 (新規販売ページからは isDiscontinued で除外) */
+const DISCONTINUED_PRODUCTS: Product[] = [
   {
     id: "e-steer-10",
     name: "e-steer 10",
     priceExTax: 909_091,
     wholesalePriceExTax: 650_000,
     distributorPriceExTax: 610_000,
-    description: "スタンダードモデル。小〜中型農機に対応する入門機。",
-    features: [
-      "小〜中型農機対応",
-      "シンプルな操作パネル",
-      "標準精度GPS連携",
-      "コンパクト設計",
-    ],
+    description: "スタンダードモデル（販売終了）",
+    features: ["小〜中型農機対応"],
+    isDiscontinued: true,
   },
+];
+
+export const MAIN_PRODUCTS: Product[] = [
   {
     id: "e-steer-20",
     name: "e-steer 20",
     priceExTax: 1_045_455,
     wholesalePriceExTax: 720_000,
     distributorPriceExTax: 650_000,
-    description: "高精度モデル。RTK-GPS対応で直進精度を大幅向上。",
+    description:
+      "標準ディスプレイ搭載モデル。国産トラクター・コンバインのキャビン内に収まりやすく、最も人気のサイズ。",
     features: [
+      "標準ディスプレイ",
+      "国産農機キャビンに最適",
       "RTK-GPS対応",
-      "高精度直進アシスト ±2cm",
-      "大型農機対応",
-      "拡張オプション対応",
+      "高精度直進アシスト",
     ],
   },
   {
@@ -89,12 +92,13 @@ export const MAIN_PRODUCTS: Product[] = [
     priceExTax: 1_181_819,
     wholesalePriceExTax: 800_000,
     distributorPriceExTax: 700_000,
-    description: "フラッグシップモデル。最高精度と最大トルクを両立。",
+    description:
+      "大型ディスプレイ搭載モデル。外車トラクター（CASE / JD / Fendt 等）の広いキャビン、または視認性を重視する方におすすめ。性能は20と同等。",
     features: [
-      "最高精度 ±1cm",
-      "最大トルク出力",
-      "全農機種対応",
-      "クラウド管理・データ連携",
+      "大型ディスプレイ",
+      "外車トラクター向け",
+      "視認性重視・老眼対策",
+      "RTK-GPS対応（性能は20と同等）",
     ],
   },
 ];
@@ -143,7 +147,12 @@ export const OPTION_PRODUCTS: Product[] = [
   },
 ];
 
-export const ALL_PRODUCTS: Product[] = [...MAIN_PRODUCTS, ...OPTION_PRODUCTS, ...DONATION_PRODUCTS];
+export const ALL_PRODUCTS: Product[] = [
+  ...MAIN_PRODUCTS,
+  ...DISCONTINUED_PRODUCTS,
+  ...OPTION_PRODUCTS,
+  ...DONATION_PRODUCTS,
+];
 
 export function getProductById(id: ProductId): Product | undefined {
   return ALL_PRODUCTS.find((p) => p.id === id);

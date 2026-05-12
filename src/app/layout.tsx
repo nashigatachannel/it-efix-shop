@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://efix-shop.jp"),
   title: "E-FIX | 農機具電動ステアリングシステム",
   description:
-    "E-FIXは農業機械向け電動ステアリングシステム e-steer を販売しています。トラクタやコンバインに後付けで自動操舵を導入し、直進精度 ±2cm の高精度作業を実現します。",
+    "E-FIXは農業機械向け電動ステアリングシステム e-steer を販売しています。トラクタやコンバインに後付けで自動操舵を導入し、高精度な直進作業を実現します。",
   keywords: [
     "農機具",
     "電動ステアリング",
