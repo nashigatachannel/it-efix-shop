@@ -1,9 +1,15 @@
+import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
 import OptionCard from "@/components/OptionCard";
 import { MAIN_PRODUCTS, OPTION_PRODUCTS } from "@/lib/products";
+
+const COVERAGE_MAP_URL =
+  "https://www.google.com/maps/d/u/0/viewer?mid=1KcsXh_1qGA-_9UQi28Dt6COgn16GVHU&ll=32.14489696078166%2C131.849509663633&z=8";
+const COVERAGE_MAP_EMBED_URL =
+  "https://www.google.com/maps/d/embed?mid=1KcsXh_1qGA-_9UQi28Dt6COgn16GVHU&ehbc=2E312F";
 
 interface Feature {
   title: string;
@@ -364,6 +370,56 @@ export default function HomePage() {
             <p className="mt-6 text-xs text-slate-500 text-center">
               ※ PointSky は EFIX独自の測位サービスです。 ※ 収束時間・精度は地域によって異なる場合があります。
             </p>
+
+            {/* Coverage Map */}
+            <div className="mt-12">
+              <header className="mb-6 text-center">
+                <h3 className="text-2xl font-black text-white">
+                  基地局カバー範囲
+                </h3>
+                <p className="mt-2 text-sm text-slate-400">
+                  EFIX独自の補正サービス基地局を全国170箇所以上に設置。順次増設中。
+                </p>
+              </header>
+
+              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 items-stretch">
+                {/* Google My Maps Embed */}
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
+                  <iframe
+                    src={COVERAGE_MAP_EMBED_URL}
+                    title="EFIX 基地局カバー範囲マップ"
+                    className="w-full h-[420px] border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+
+                {/* QR + Link */}
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4">
+                  <p className="text-sm text-slate-300">
+                    スマホで読み取り、最新マップを確認
+                  </p>
+                  <Image
+                    src="/efix-coverage-qr.png"
+                    alt="EFIX 基地局カバー範囲マップ QRコード"
+                    width={200}
+                    height={200}
+                    className="bg-white rounded-lg p-2"
+                  />
+                  <Link
+                    href={COVERAGE_MAP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-lg transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  >
+                    Googleマップで開く
+                  </Link>
+                  <p className="text-xs text-slate-500 break-all">
+                    {COVERAGE_MAP_URL.replace("https://", "")}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
