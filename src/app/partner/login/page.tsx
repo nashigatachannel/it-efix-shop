@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -49,9 +50,12 @@ function LoginForm() {
           <p className="text-2xl font-black tracking-widest text-emerald-400">
             E-FIX
           </p>
+          <h1 className="text-lg font-black text-white mt-3">
+            販売店ログイン
+          </h1>
           <p className="text-sm text-slate-300 mt-1">販売店様 専用ページ</p>
           <p className="text-xs text-slate-500 mt-1">
-            通常卸 / 特価卸 共通ログイン
+            efix-shop.jp / 通常卸・特価卸 共通
           </p>
         </div>
         <div>
@@ -59,11 +63,11 @@ function LoginForm() {
             htmlFor="email"
             className="block text-xs font-semibold text-slate-300 mb-1"
           >
-            メールアドレス
+            ユーザー名またはメールアドレス
           </label>
           <input
             id="email"
-            type="email"
+            type="text"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -103,6 +107,14 @@ function LoginForm() {
         <p className="text-xs text-slate-600 text-center">
           24時間有効のセッションを発行します。アカウントの発行・パスワード再発行は E-FIX 担当者までご連絡ください。
         </p>
+        <div className="flex justify-center">
+          <Link
+            href="/"
+            className="text-xs font-semibold text-slate-500 hover:text-emerald-300"
+          >
+            トップページへ戻る
+          </Link>
+        </div>
       </form>
     </main>
   );

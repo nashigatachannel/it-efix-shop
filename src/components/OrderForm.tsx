@@ -1,13 +1,15 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   MAIN_PRODUCTS,
   OPTION_PRODUCTS,
   DONATION_PRODUCTS,
   calcTaxIncluded,
   formatPrice,
+  type Product,
   type ProductId,
 } from "@/lib/products";
 
@@ -31,6 +33,15 @@ interface AgreementState {
   taxCheck: boolean;
 }
 
+type ProductQuantities = Partial<Record<ProductId, number>>;
+
+interface OrderLineItem {
+  product: Product;
+  quantity: number;
+  unitPriceIncTax: number;
+  lineTotalIncTax: number;
+}
+
 const EMPTY_CUSTOMER: CustomerInfo = {
   name: "",
   postalCode: "",
@@ -40,7 +51,7 @@ const EMPTY_CUSTOMER: CustomerInfo = {
   machineMaker: "",
   machineModel: "",
   notes: "",
-  requestInvoice: false,
+  requestInvoice: true,
 };
 
 const EMPTY_AGREEMENT: AgreementState = {
@@ -49,10 +60,43 @@ const EMPTY_AGREEMENT: AgreementState = {
   taxCheck: false,
 };
 
+const MAX_QUANTITY = 99;
+const ORDER_PRODUCTS: Product[] = [
+  ...MAIN_PRODUCTS,
+  ...OPTION_PRODUCTS,
+  ...DONATION_PRODUCTS,
+];
+
+function clampQuantity(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.min(MAX_QUANTITY, Math.floor(value));
+}
+
+function getQuantity(quantities: ProductQuantities, id: ProductId): number {
+  return clampQuantity(quantities[id] ?? 0);
+}
+
+function buildOrderLines(quantities: ProductQuantities): OrderLineItem[] {
+  return ORDER_PRODUCTS.map((product) => {
+    const quantity = getQuantity(quantities, product.id);
+    const unitPriceIncTax = calcTaxIncluded(product.priceExTax);
+    return {
+      product,
+      quantity,
+      unitPriceIncTax,
+      lineTotalIncTax: unitPriceIncTax * quantity,
+    };
+  }).filter((line) => line.quantity > 0);
+}
+
+function calcLinesTotal(lines: OrderLineItem[]): number {
+  return lines.reduce((sum, line) => sum + line.lineTotalIncTax, 0);
+}
+
 // --- プログレスバー ---
 
 function StepIndicator({ currentStep }: { currentStep: number }) {
-  const steps = ["製品選択", "お客様情報", "同意確認", "注文確認"];
+  const steps = ["製品選択", "カート", "お客様情報", "同意確認", "注文確認"];
 
   return (
     <nav aria-label="注文ステップ" className="mb-10">
@@ -69,10 +113,10 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                   className={[
                     "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors",
                     isCompleted
-                      ? "bg-emerald-500 text-white"
+                      ? "bg-[#0b806b] text-white"
                       : isCurrent
-                      ? "bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400"
-                      : "bg-slate-700/50 border-2 border-slate-600 text-slate-500",
+                      ? "bg-[#e8f6ef] border-2 border-[#0b806b] text-[#0b806b]"
+                      : "bg-white border-2 border-[#d8c9aa] text-[#88928d]",
                   ].join(" ")}
                   aria-current={isCurrent ? "step" : undefined}
                 >
@@ -98,7 +142,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                 <span
                   className={[
                     "text-xs font-medium hidden sm:block",
-                    isCurrent ? "text-emerald-400" : isCompleted ? "text-emerald-500/70" : "text-slate-500",
+                    isCurrent ? "text-[#0b806b]" : isCompleted ? "text-[#0b806b]/70" : "text-[#88928d]",
                   ].join(" ")}
                 >
                   {label}
@@ -108,7 +152,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                 <div
                   className={[
                     "flex-1 h-0.5 mx-2 transition-colors",
-                    isCompleted ? "bg-emerald-500" : "bg-slate-700",
+                    isCompleted ? "bg-[#0b806b]" : "bg-[#e7dcc8]",
                   ].join(" ")}
                   aria-hidden="true"
                 />
@@ -123,239 +167,248 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 
 // --- ステップ1: 製品選択 ---
 
+function ProductVisual({
+  product,
+  compact = false,
+}: {
+  product: Product;
+  compact?: boolean;
+}) {
+  if (!product.image) {
+    return (
+      <div
+        className={[
+          "flex items-center justify-center rounded-lg bg-[#fbf7ef] text-xs font-bold tracking-[0.18em] text-[#88928d]",
+          compact ? "h-16 w-20" : "h-36 sm:h-full",
+        ].join(" ")}
+      >
+        E-FIX
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={[
+        "relative overflow-hidden bg-white",
+        compact ? "h-16 w-20 rounded-lg" : "h-40 rounded-t-xl sm:h-full sm:rounded-l-xl sm:rounded-tr-none",
+      ].join(" ")}
+    >
+      <Image
+        src={product.image}
+        alt={`${product.name}の製品画像`}
+        fill
+        sizes={compact ? "80px" : "(min-width: 640px) 180px, 92vw"}
+        className="object-contain p-3"
+      />
+    </div>
+  );
+}
+
+function QuantityControl({
+  productId,
+  quantity,
+  onChange,
+}: {
+  productId: ProductId;
+  quantity: number;
+  onChange: (id: ProductId, quantity: number) => void;
+}) {
+  const inputId = `qty-${productId}`;
+
+  return (
+    <div className="flex items-center gap-2">
+      <label htmlFor={inputId} className="sr-only">
+        数量
+      </label>
+      <button
+        type="button"
+        onClick={() => onChange(productId, quantity - 1)}
+        disabled={quantity <= 0}
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#d8c9aa] bg-white text-lg font-black text-[#394842] transition-colors hover:border-[#c49a45] disabled:cursor-not-allowed disabled:opacity-35"
+        aria-label="数量を減らす"
+      >
+        -
+      </button>
+      <input
+        id={inputId}
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={MAX_QUANTITY}
+        value={quantity}
+        onChange={(e) => onChange(productId, Number(e.target.value))}
+        onBlur={(e) => onChange(productId, Number(e.target.value))}
+        className="h-10 w-16 rounded-lg border border-[#d8c9aa] bg-white text-center font-mono text-base font-bold text-[#26322f] focus:border-[#0b806b] focus:outline-none focus:ring-2 focus:ring-[#0b806b]/20"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(productId, quantity + 1)}
+        disabled={quantity >= MAX_QUANTITY}
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#d8c9aa] bg-white text-lg font-black text-[#394842] transition-colors hover:border-[#c49a45] disabled:cursor-not-allowed disabled:opacity-35"
+        aria-label="数量を増やす"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function ProductQuantityCard({
+  product,
+  quantity,
+  onQuantityChange,
+  imageColumnClass,
+}: {
+  product: Product;
+  quantity: number;
+  onQuantityChange: (id: ProductId, quantity: number) => void;
+  imageColumnClass: string;
+}) {
+  const isSelected = quantity > 0;
+  const unitPriceIncTax = calcTaxIncluded(product.priceExTax);
+
+  return (
+    <div
+      className={[
+        "overflow-hidden rounded-xl border transition-all sm:grid",
+        imageColumnClass,
+        isSelected
+          ? "border-[#0b806b] bg-[#e8f6ef]"
+          : "border-[#eadfce] bg-white",
+      ].join(" ")}
+    >
+      <ProductVisual product={product} />
+      <div className="flex flex-col gap-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-[#26322f]">{product.name}</h3>
+            <p className="mt-2 text-sm leading-6 text-[#607069]">
+              {product.description}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-lg font-black text-[#0b806b]">
+              ¥{formatPrice(unitPriceIncTax)}
+            </p>
+            <p className="text-xs text-[#88928d]">税込 / 1点</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {product.features.map((feature) => (
+            <span
+              key={feature}
+              className="rounded-full border border-[#eadfce] bg-[#fbf7ef] px-3 py-1 text-xs font-semibold text-[#394842]"
+            >
+              {feature}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eadfce] pt-4">
+          <QuantityControl
+            productId={product.id}
+            quantity={quantity}
+            onChange={onQuantityChange}
+          />
+          {quantity > 0 && (
+            <p className="text-sm font-bold text-[#0b806b]">
+              小計 ¥{formatPrice(unitPriceIncTax * quantity)}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Step1Products({
-  selectedMain,
-  selectedOptions,
-  onMainChange,
-  onOptionToggle,
+  quantities,
+  onQuantityChange,
   onNext,
 }: {
-  selectedMain: ProductId | null;
-  selectedOptions: ProductId[];
-  onMainChange: (id: ProductId) => void;
-  onOptionToggle: (id: ProductId) => void;
+  quantities: ProductQuantities;
+  onQuantityChange: (id: ProductId, quantity: number) => void;
   onNext: () => void;
 }) {
-  const subtotal = (() => {
-    let total = 0;
-    if (selectedMain) {
-      const p = MAIN_PRODUCTS.find((p) => p.id === selectedMain);
-      if (p) total += calcTaxIncluded(p.priceExTax);
-    }
-    for (const optId of selectedOptions) {
-      const p = [...OPTION_PRODUCTS, ...DONATION_PRODUCTS].find((p) => p.id === optId);
-      if (p) total += calcTaxIncluded(p.priceExTax);
-    }
-    return total;
-  })();
-
-  const hasAnySelection = selectedMain !== null || selectedOptions.length > 0;
+  const lines = buildOrderLines(quantities);
+  const subtotal = calcLinesTotal(lines);
+  const hasAnySelection = lines.length > 0;
 
   return (
     <section aria-labelledby="step1-heading">
-      <h2 id="step1-heading" className="text-xl font-bold text-white mb-6">
+      <h2 id="step1-heading" className="text-xl font-bold text-[#26322f] mb-6">
         製品・オプション選択
       </h2>
 
       {/* メイン製品 */}
       <fieldset className="mb-8">
-        <legend className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+        <legend className="text-sm font-semibold text-[#394842] mb-4 flex items-center gap-2">
           本体製品
-          <span className="text-xs text-slate-500 font-normal">任意</span>
+          <span className="text-xs text-[#88928d] font-normal">任意</span>
         </legend>
         <div className="flex flex-col gap-3">
-          {MAIN_PRODUCTS.map((product) => {
-            const isSelected = selectedMain === product.id;
-            return (
-              <label
-                key={product.id}
-                className={[
-                  "flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all",
-                  isSelected
-                    ? "border-emerald-500 bg-emerald-500/10"
-                    : "border-slate-700/50 bg-slate-800/50 hover:border-slate-600",
-                ].join(" ")}
-              >
-                <input
-                  type="radio"
-                  name="main-product"
-                  value={product.id}
-                  checked={isSelected}
-                  onChange={() => onMainChange(product.id)}
-                  className="sr-only"
-                />
-                {/* カスタムラジオ */}
-                <div
-                  className={[
-                    "mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors",
-                    isSelected
-                      ? "border-emerald-500 bg-emerald-500"
-                      : "border-slate-500",
-                  ].join(" ")}
-                  aria-hidden="true"
-                >
-                  {isSelected && (
-                    <div className="w-2 h-2 rounded-full bg-white" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-bold text-white">{product.name}</span>
-                    <div className="text-right">
-                      <span className="text-emerald-400 font-bold text-lg">
-                        ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
-                        <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-slate-400 mt-1">{product.description}</p>
-                </div>
-              </label>
-            );
-          })}
+          {MAIN_PRODUCTS.map((product) => (
+            <ProductQuantityCard
+              key={product.id}
+              product={product}
+              quantity={getQuantity(quantities, product.id)}
+              onQuantityChange={onQuantityChange}
+              imageColumnClass="sm:grid-cols-[180px_1fr]"
+            />
+          ))}
         </div>
       </fieldset>
 
       {/* オプション */}
       <fieldset className="mb-8">
-        <legend className="text-sm font-semibold text-slate-300 mb-4">
+        <legend className="text-sm font-semibold text-[#394842] mb-4">
           オプション
-          <span className="text-xs text-slate-500 font-normal ml-2">複数選択可</span>
+          <span className="text-xs text-[#88928d] font-normal ml-2">複数選択可</span>
         </legend>
         <div className="flex flex-col gap-3">
-          {OPTION_PRODUCTS.map((product) => {
-            const isSelected = selectedOptions.includes(product.id);
-            return (
-              <label
-                key={product.id}
-                className={[
-                  "flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all",
-                  isSelected
-                    ? "border-emerald-500 bg-emerald-500/10"
-                    : "border-slate-700/50 bg-slate-800/50 hover:border-slate-600",
-                ].join(" ")}
-              >
-                <input
-                  type="checkbox"
-                  value={product.id}
-                  checked={isSelected}
-                  onChange={() => onOptionToggle(product.id)}
-                  className="sr-only"
-                />
-                <div
-                  className={[
-                    "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors",
-                    isSelected
-                      ? "border-emerald-500 bg-emerald-500"
-                      : "border-slate-500",
-                  ].join(" ")}
-                  aria-hidden="true"
-                >
-                  {isSelected && (
-                    <svg
-                      className="w-3 h-3 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-bold text-white">{product.name}</span>
-                    <div className="text-right">
-                      <span className="text-emerald-400 font-bold text-lg">
-                        ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
-                        <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-slate-400 mt-1">{product.description}</p>
-                </div>
-              </label>
-            );
-          })}
+          {OPTION_PRODUCTS.map((product) => (
+            <ProductQuantityCard
+              key={product.id}
+              product={product}
+              quantity={getQuantity(quantities, product.id)}
+              onQuantityChange={onQuantityChange}
+              imageColumnClass="sm:grid-cols-[150px_1fr]"
+            />
+          ))}
         </div>
       </fieldset>
 
       {/* 支援・寄付 */}
       <fieldset className="mb-8">
-        <legend className="text-sm font-semibold text-slate-300 mb-4">
+        <legend className="text-sm font-semibold text-[#394842] mb-4">
           支援・寄付
-          <span className="text-xs text-slate-500 font-normal ml-2">任意</span>
+          <span className="text-xs text-[#88928d] font-normal ml-2">任意</span>
         </legend>
         <div className="flex flex-col gap-3">
-          {DONATION_PRODUCTS.map((product) => {
-            const isSelected = selectedOptions.includes(product.id);
-            return (
-              <label
-                key={product.id}
-                className={[
-                  "flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all",
-                  isSelected
-                    ? "border-emerald-500 bg-emerald-500/10"
-                    : "border-slate-700/50 bg-slate-800/50 hover:border-slate-600",
-                ].join(" ")}
-              >
-                <input
-                  type="checkbox"
-                  value={product.id}
-                  checked={isSelected}
-                  onChange={() => onOptionToggle(product.id)}
-                  className="sr-only"
-                />
-                <div
-                  className={[
-                    "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors",
-                    isSelected
-                      ? "border-emerald-500 bg-emerald-500"
-                      : "border-slate-500",
-                  ].join(" ")}
-                  aria-hidden="true"
-                >
-                  {isSelected && (
-                    <svg
-                      className="w-3 h-3 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-bold text-white">{product.name}</span>
-                    <div className="text-right">
-                      <span className="text-emerald-400 font-bold text-lg">
-                        ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
-                        <span className="text-xs font-normal text-slate-400 ml-1">税込</span>
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-slate-400 mt-1">{product.description}</p>
-                </div>
-              </label>
-            );
-          })}
+          {DONATION_PRODUCTS.map((product) => (
+            <ProductQuantityCard
+              key={product.id}
+              product={product}
+              quantity={getQuantity(quantities, product.id)}
+              onQuantityChange={onQuantityChange}
+              imageColumnClass="sm:grid-cols-[150px_1fr]"
+            />
+          ))}
         </div>
       </fieldset>
 
       {/* 小計 */}
-      <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-4 mb-8">
+      <div className="rounded-xl border border-[#eadfce] bg-white p-4 mb-8">
         <div className="flex justify-between items-center">
-          <span className="text-slate-300 font-medium">小計（税込）</span>
-          <span className="text-2xl font-black text-emerald-400">
+          <span className="text-[#394842] font-medium">小計（税込）</span>
+          <span className="text-2xl font-black text-[#0b806b]">
             ¥{formatPrice(subtotal)}
           </span>
         </div>
         {!hasAnySelection && (
-          <p className="text-xs text-slate-500 mt-2">商品を選択してください</p>
+          <p className="text-xs text-[#88928d] mt-2">数量を入力してください</p>
         )}
       </div>
 
@@ -364,9 +417,83 @@ function Step1Products({
           type="button"
           onClick={onNext}
           disabled={!hasAnySelection}
-          className="px-8 py-3 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 focus-visible:outline-offset-2"
+          className="px-8 py-3 rounded-xl font-bold text-white bg-[#0b806b] hover:bg-[#096554] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-[#0b806b] focus-visible:outline-offset-2"
         >
           次へ
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// --- ステップ2: カート ---
+
+function Step2Cart({
+  lines,
+  onBack,
+  onNext,
+}: {
+  lines: OrderLineItem[];
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const total = calcLinesTotal(lines);
+
+  return (
+    <section aria-labelledby="step2-cart-heading">
+      <h2 id="step2-cart-heading" className="text-xl font-bold text-[#26322f] mb-6">
+        カート
+      </h2>
+
+      <div className="rounded-xl border border-[#eadfce] bg-white">
+        <ul className="divide-y divide-[#eadfce]">
+          {lines.map(({ product, quantity, unitPriceIncTax, lineTotalIncTax }) => (
+            <li key={product.id} className="flex items-center gap-3 p-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <ProductVisual product={product} compact />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-[#26322f]">
+                    {product.name}
+                  </p>
+                  <p className="mt-1 text-xs text-[#607069]">
+                    ¥{formatPrice(unitPriceIncTax)} x {quantity}
+                  </p>
+                </div>
+              </div>
+              <div className="ml-auto shrink-0 text-right">
+                <p className="text-sm font-black text-[#0b806b]">
+                  ¥{formatPrice(lineTotalIncTax)}
+                </p>
+                <p className="text-xs text-[#88928d]">税込</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-[#eadfce] bg-[#fbf7ef] p-4">
+        <div className="flex items-center justify-between gap-4">
+          <span className="font-bold text-[#26322f]">合計（税込）</span>
+          <span className="text-2xl font-black text-[#0b806b]">
+            ¥{formatPrice(total)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-8 flex justify-between gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-xl border border-[#d8c9aa] px-6 py-3 font-bold text-[#394842] transition-colors hover:border-[#c49a45] hover:text-[#26322f] focus-visible:outline-2 focus-visible:outline-[#c49a45] focus-visible:outline-offset-2"
+        >
+          戻る
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          className="rounded-xl bg-[#0b806b] px-8 py-3 font-bold text-white transition-colors hover:bg-[#096554] focus-visible:outline-2 focus-visible:outline-[#0b806b] focus-visible:outline-offset-2"
+        >
+          お客様情報へ
         </button>
       </div>
     </section>
@@ -422,15 +549,15 @@ function Step2Customer({
 
   const fieldClass = (field: keyof CustomerInfo) =>
     [
-      "w-full px-4 py-2.5 rounded-lg bg-slate-900/80 border text-white placeholder-slate-500 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
-      errors[field] ? "border-rose-500" : "border-slate-600 focus:border-emerald-500",
+      "w-full px-4 py-2.5 rounded-lg bg-white border text-[#26322f] placeholder-[#9aa39f] transition-colors focus:outline-none focus:ring-2 focus:ring-[#0b806b]/30",
+      errors[field] ? "border-rose-500" : "border-[#d8c9aa] focus:border-[#0b806b]",
     ].join(" ");
 
-  const labelClass = "block text-sm font-medium text-slate-300 mb-1.5";
+  const labelClass = "block text-sm font-medium text-[#394842] mb-1.5";
 
   return (
     <section aria-labelledby="step2-heading">
-      <h2 id="step2-heading" className="text-xl font-bold text-white mb-6">
+      <h2 id="step2-heading" className="text-xl font-bold text-[#26322f] mb-6">
         お客様情報
       </h2>
 
@@ -605,7 +732,7 @@ function Step2Customer({
         <div>
           <label htmlFor="notes" className={labelClass}>
             備考
-            <span className="text-xs text-slate-500 font-normal ml-2">任意</span>
+            <span className="text-xs text-[#88928d] font-normal ml-2">任意</span>
           </label>
           <textarea
             id="notes"
@@ -613,30 +740,31 @@ function Step2Customer({
             value={customer.notes}
             onChange={(e) => onChange("notes", e.target.value)}
             placeholder="ご質問・ご要望があればご記入ください"
-            className="w-full px-4 py-2.5 rounded-lg bg-slate-900/80 border border-slate-600 text-white placeholder-slate-500 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 resize-y"
+            className="w-full px-4 py-2.5 rounded-lg bg-white border border-[#d8c9aa] text-[#26322f] placeholder-[#9aa39f] transition-colors focus:outline-none focus:ring-2 focus:ring-[#0b806b]/30 focus:border-[#0b806b] resize-y"
           />
         </div>
 
         {/* 適格請求書オプション */}
-        <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4">
+        <div className="rounded-xl border border-[#eadfce] bg-white p-4">
           <label
             htmlFor="requestInvoice"
-            className="flex items-start gap-3 cursor-pointer"
+            className="flex items-start gap-3 cursor-default"
           >
             <input
               type="checkbox"
               id="requestInvoice"
-              checked={customer.requestInvoice}
-              onChange={(e) => onChange("requestInvoice", e.target.checked)}
-              className="mt-1 h-5 w-5 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-2 focus:ring-emerald-500/50"
+              checked
+              disabled
+              readOnly
+              className="mt-1 h-5 w-5 rounded border-[#d8c9aa] bg-white text-[#0b806b] opacity-90 focus:ring-2 focus:ring-[#0b806b]/30"
             />
             <div className="flex-1">
-              <div className="text-sm font-semibold text-white">
-                適格請求書（インボイス）の発行を希望する
+              <div className="text-sm font-semibold text-[#26322f]">
+                適格請求書（インボイス）をStripeで自動発行します
               </div>
-              <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+              <p className="mt-1 text-xs text-[#607069] leading-relaxed">
                 お支払い完了後、登録番号{" "}
-                <span className="font-mono text-slate-300">
+                <span className="font-mono text-[#394842]">
                   T2810703528253
                 </span>{" "}
                 入りの適格請求書PDFをご入力のメールアドレス宛に自動送信します。
@@ -646,7 +774,7 @@ function Step2Customer({
         </div>
       </div>
 
-      <p className="text-xs text-slate-500 mt-4">
+      <p className="text-xs text-[#88928d] mt-4">
         <span className="text-rose-400">*</span> は必須項目です
       </p>
 
@@ -654,14 +782,14 @@ function Step2Customer({
         <button
           type="button"
           onClick={onBack}
-          className="px-6 py-3 rounded-xl font-bold text-slate-300 border border-slate-600 hover:border-slate-400 hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-slate-400 focus-visible:outline-offset-2"
+          className="px-6 py-3 rounded-xl font-bold text-[#394842] border border-[#d8c9aa] hover:border-[#c49a45] hover:text-[#26322f] transition-colors focus-visible:outline-2 focus-visible:outline-slate-400 focus-visible:outline-offset-2"
         >
           戻る
         </button>
         <button
           type="button"
           onClick={handleNext}
-          className="px-8 py-3 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-400 transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 focus-visible:outline-offset-2"
+          className="px-8 py-3 rounded-xl font-bold text-white bg-[#0b806b] hover:bg-[#096554] transition-colors focus-visible:outline-2 focus-visible:outline-[#0b806b] focus-visible:outline-offset-2"
         >
           次へ
         </button>
@@ -697,7 +825,7 @@ function Step3Agreement({
             href="/legal"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+            className="text-[#0b806b] hover:text-[#0b806b] underline underline-offset-2"
           >
             特定商取引法に基づく表記
           </Link>
@@ -717,11 +845,11 @@ function Step3Agreement({
 
   return (
     <section aria-labelledby="step3-heading">
-      <h2 id="step3-heading" className="text-xl font-bold text-white mb-6">
+      <h2 id="step3-heading" className="text-xl font-bold text-[#26322f] mb-6">
         同意確認
       </h2>
 
-      <p className="text-sm text-slate-400 mb-6">
+      <p className="text-sm text-[#607069] mb-6">
         ご注文の前に以下の事項をご確認の上、チェックを入れてください。
       </p>
 
@@ -734,8 +862,8 @@ function Step3Agreement({
               className={[
                 "flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all",
                 checked
-                  ? "border-emerald-500 bg-emerald-500/10"
-                  : "border-slate-700/50 bg-slate-800/50 hover:border-slate-600",
+                  ? "border-[#0b806b] bg-[#e8f6ef]"
+                  : "border-[#eadfce] bg-white hover:border-[#d8c9aa]",
               ].join(" ")}
             >
               <input
@@ -747,7 +875,7 @@ function Step3Agreement({
               <div
                 className={[
                   "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors",
-                  checked ? "border-emerald-500 bg-emerald-500" : "border-slate-500",
+                  checked ? "border-[#0b806b] bg-[#0b806b]" : "border-[#b8c2bd]",
                 ].join(" ")}
                 aria-hidden="true"
               >
@@ -763,7 +891,7 @@ function Step3Agreement({
                   </svg>
                 )}
               </div>
-              <span className="text-sm text-slate-300 leading-relaxed">{content}</span>
+              <span className="text-sm text-[#394842] leading-relaxed">{content}</span>
             </label>
           );
         })}
@@ -773,7 +901,7 @@ function Step3Agreement({
         <button
           type="button"
           onClick={onBack}
-          className="px-6 py-3 rounded-xl font-bold text-slate-300 border border-slate-600 hover:border-slate-400 hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-slate-400 focus-visible:outline-offset-2"
+          className="px-6 py-3 rounded-xl font-bold text-[#394842] border border-[#d8c9aa] hover:border-[#c49a45] hover:text-[#26322f] transition-colors focus-visible:outline-2 focus-visible:outline-slate-400 focus-visible:outline-offset-2"
         >
           戻る
         </button>
@@ -781,7 +909,7 @@ function Step3Agreement({
           type="button"
           onClick={onNext}
           disabled={!allChecked}
-          className="px-8 py-3 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 focus-visible:outline-offset-2"
+          className="px-8 py-3 rounded-xl font-bold text-white bg-[#0b806b] hover:bg-[#096554] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-[#0b806b] focus-visible:outline-offset-2"
         >
           次へ
         </button>
@@ -793,75 +921,74 @@ function Step3Agreement({
 // --- ステップ4: 注文確認 ---
 
 function Step4Confirm({
-  selectedMain,
-  selectedOptions,
+  lines,
   customer,
   onBack,
   onSubmit,
   isSubmitting,
   submitError,
 }: {
-  selectedMain: ProductId | null;
-  selectedOptions: ProductId[];
+  lines: OrderLineItem[];
   customer: CustomerInfo;
   onBack: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
   submitError: string | null;
 }) {
-  const mainProduct = selectedMain ? MAIN_PRODUCTS.find((p) => p.id === selectedMain) : null;
-  const optionProducts = selectedOptions.map(
-    (id) => [...OPTION_PRODUCTS, ...DONATION_PRODUCTS].find((p) => p.id === id)!
-  );
-
-  const allProducts = [...(mainProduct ? [mainProduct] : []), ...optionProducts];
-  const total = allProducts.reduce(
-    (sum, p) => sum + calcTaxIncluded(p.priceExTax),
-    0
-  );
+  const total = calcLinesTotal(lines);
 
   const dlItemClass = "flex justify-between items-start gap-4 py-2";
-  const dtClass = "text-sm text-slate-400 shrink-0";
-  const ddClass = "text-sm text-slate-200 text-right";
+  const dtClass = "text-sm text-[#607069] shrink-0";
+  const ddClass = "text-sm text-[#26322f] text-right";
 
   return (
     <section aria-labelledby="step4-heading">
-      <h2 id="step4-heading" className="text-xl font-bold text-white mb-6">
+      <h2 id="step4-heading" className="text-xl font-bold text-[#26322f] mb-6">
         注文内容の確認
       </h2>
 
       {/* 注文商品 */}
-      <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 mb-6">
-        <h3 className="text-sm font-semibold text-slate-300 mb-4 pb-3 border-b border-slate-700/50">
+      <div className="rounded-xl border border-[#eadfce] bg-white p-5 mb-6">
+        <h3 className="text-sm font-semibold text-[#394842] mb-4 pb-3 border-b border-[#eadfce]">
           ご注文商品
         </h3>
         <ul className="flex flex-col gap-3">
-          {allProducts.map((product) => (
-            <li key={product.id} className="flex justify-between items-center gap-4">
-              <span className="text-sm text-slate-200">{product.name}</span>
+          {lines.map(({ product, quantity, unitPriceIncTax, lineTotalIncTax }) => (
+            <li key={product.id} className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <ProductVisual product={product} compact />
+                <div className="min-w-0">
+                  <span className="block truncate text-sm text-[#26322f]">
+                    {product.name}
+                  </span>
+                  <span className="text-xs text-[#607069]">
+                    ¥{formatPrice(unitPriceIncTax)} x {quantity}
+                  </span>
+                </div>
+              </div>
               <div className="text-right shrink-0">
-                <span className="text-sm text-emerald-400 font-bold">
-                  ¥{formatPrice(calcTaxIncluded(product.priceExTax))}
+                <span className="text-sm text-[#0b806b] font-bold">
+                  ¥{formatPrice(lineTotalIncTax)}
                 </span>
-                <span className="text-xs text-slate-500 ml-1">税込</span>
+                <span className="text-xs text-[#88928d] ml-1">税込</span>
               </div>
             </li>
           ))}
         </ul>
-        <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center">
-          <span className="font-bold text-slate-200">合計（税込）</span>
-          <span className="text-2xl font-black text-emerald-400">
+        <div className="mt-4 pt-4 border-t border-[#eadfce] flex justify-between items-center">
+          <span className="font-bold text-[#26322f]">合計（税込）</span>
+          <span className="text-2xl font-black text-[#0b806b]">
             ¥{formatPrice(total)}
           </span>
         </div>
       </div>
 
       {/* お客様情報 */}
-      <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 mb-8">
-        <h3 className="text-sm font-semibold text-slate-300 mb-4 pb-3 border-b border-slate-700/50">
+      <div className="rounded-xl border border-[#eadfce] bg-white p-5 mb-8">
+        <h3 className="text-sm font-semibold text-[#394842] mb-4 pb-3 border-b border-[#eadfce]">
           お客様情報
         </h3>
-        <dl className="divide-y divide-slate-700/30">
+        <dl className="divide-y divide-[#eadfce]">
           <div className={dlItemClass}>
             <dt className={dtClass}>氏名</dt>
             <dd className={ddClass}>{customer.name}</dd>
@@ -901,9 +1028,7 @@ function Step4Confirm({
           <div className={dlItemClass}>
             <dt className={dtClass}>適格請求書</dt>
             <dd className={ddClass}>
-              {customer.requestInvoice
-                ? "発行希望（T2810703528253 入りPDFを自動送付）"
-                : "不要"}
+              発行（T2810703528253 入りPDFをStripeから自動送付）
             </dd>
           </div>
         </dl>
@@ -923,7 +1048,7 @@ function Step4Confirm({
           type="button"
           onClick={onBack}
           disabled={isSubmitting}
-          className="px-6 py-3 rounded-xl font-bold text-slate-300 border border-slate-600 hover:border-slate-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-slate-400 focus-visible:outline-offset-2"
+          className="px-6 py-3 rounded-xl font-bold text-[#394842] border border-[#d8c9aa] hover:border-[#c49a45] hover:text-[#26322f] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-slate-400 focus-visible:outline-offset-2"
         >
           戻る
         </button>
@@ -931,7 +1056,7 @@ function Step4Confirm({
           type="button"
           onClick={onSubmit}
           disabled={isSubmitting}
-          className="flex items-center gap-2 px-8 py-3 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-400 disabled:opacity-70 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 focus-visible:outline-offset-2"
+          className="flex items-center gap-2 px-8 py-3 rounded-xl font-bold text-white bg-[#0b806b] hover:bg-[#096554] disabled:opacity-70 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-[#0b806b] focus-visible:outline-offset-2"
         >
           {isSubmitting ? (
             <>
@@ -970,17 +1095,24 @@ function Step4Confirm({
 
 export default function OrderForm() {
   const [step, setStep] = useState(1);
-  const [selectedMain, setSelectedMain] = useState<ProductId | null>(null);
-  const [selectedOptions, setSelectedOptions] = useState<ProductId[]>([]);
+  const [quantities, setQuantities] = useState<ProductQuantities>({});
   const [customer, setCustomer] = useState<CustomerInfo>(EMPTY_CUSTOMER);
   const [agreement, setAgreement] = useState<AgreementState>(EMPTY_AGREEMENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const lines = buildOrderLines(quantities);
 
-  const handleOptionToggle = (id: ProductId) => {
-    setSelectedOptions((prev) =>
-      prev.includes(id) ? prev.filter((o) => o !== id) : [...prev, id]
-    );
+  const handleQuantityChange = (id: ProductId, quantity: number) => {
+    const normalized = clampQuantity(quantity);
+    setQuantities((prev) => {
+      const next = { ...prev };
+      if (normalized > 0) {
+        next[id] = normalized;
+      } else {
+        delete next[id];
+      }
+      return next;
+    });
   };
 
   const handleCustomerChange = (
@@ -995,18 +1127,47 @@ export default function OrderForm() {
   };
 
   const handleSubmit = async () => {
+    if (lines.length === 0) {
+      setSubmitError("数量を1以上入力してください");
+      setStep(1);
+      return;
+    }
+
+    const total = calcLinesTotal(lines);
+    const confirmed = window.confirm(
+      [
+        "この内容で注文手続きへ進みますか？",
+        "",
+        ...lines.map(
+          (line) =>
+            `・${line.product.name}: ¥${formatPrice(line.unitPriceIncTax)} x ${line.quantity} = ¥${formatPrice(line.lineTotalIncTax)}`,
+        ),
+        "",
+        `合計(税込): ¥${formatPrice(total)}`,
+        `お名前: ${customer.name}`,
+        `メール: ${customer.email}`,
+        `電話: ${customer.phone}`,
+        `配送先: ${customer.postalCode} ${customer.address}`,
+        "",
+        "OKを押すと決済画面へ進みます。",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
-      const productIds: ProductId[] = [...(selectedMain ? [selectedMain] : []), ...selectedOptions];
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productIds,
+          lines: lines.map((line) => ({
+            productId: line.product.id,
+            quantity: line.quantity,
+          })),
           customer,
-          requestInvoice: customer.requestInvoice,
+          requestInvoice: true,
         }),
       });
 
@@ -1033,38 +1194,42 @@ export default function OrderForm() {
     <div>
       <StepIndicator currentStep={step} />
 
-      <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-6 sm:p-8">
+      <div className="rounded-lg border border-[#eadfce] bg-white p-5 shadow-[0_24px_70px_rgba(112,91,48,0.10)] sm:p-8">
         {step === 1 && (
           <Step1Products
-            selectedMain={selectedMain}
-            selectedOptions={selectedOptions}
-            onMainChange={(id) => setSelectedMain(id)}
-            onOptionToggle={handleOptionToggle}
+            quantities={quantities}
+            onQuantityChange={handleQuantityChange}
             onNext={() => setStep(2)}
           />
         )}
         {step === 2 && (
-          <Step2Customer
-            customer={customer}
-            onChange={handleCustomerChange}
+          <Step2Cart
+            lines={lines}
             onBack={() => setStep(1)}
             onNext={() => setStep(3)}
           />
         )}
         {step === 3 && (
-          <Step3Agreement
-            agreement={agreement}
-            onToggle={handleAgreementToggle}
+          <Step2Customer
+            customer={customer}
+            onChange={handleCustomerChange}
             onBack={() => setStep(2)}
             onNext={() => setStep(4)}
           />
         )}
         {step === 4 && (
-          <Step4Confirm
-            selectedMain={selectedMain}
-            selectedOptions={selectedOptions}
-            customer={customer}
+          <Step3Agreement
+            agreement={agreement}
+            onToggle={handleAgreementToggle}
             onBack={() => setStep(3)}
+            onNext={() => setStep(5)}
+          />
+        )}
+        {step === 5 && (
+          <Step4Confirm
+            lines={lines}
+            customer={customer}
+            onBack={() => setStep(4)}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             submitError={submitError}
@@ -1074,3 +1239,4 @@ export default function OrderForm() {
     </div>
   );
 }
+

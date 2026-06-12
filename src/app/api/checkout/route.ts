@@ -36,7 +36,6 @@ interface CheckoutRequestBody {
   // 卸/特価卸: 数量付きライン
   lines?: OrderLine[];
   customer: CustomerInfo;
-  requestInvoice?: boolean;
   /** "retail" | "wholesale" | "distributor"。未指定はretail */
   priceTier?: PriceTier;
 }
@@ -50,7 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { productIds, lines, customer, requestInvoice } = body;
+  const { productIds, lines, customer } = body;
   const priceTier: PriceTier = body.priceTier ?? "retail";
 
   // 卸/特価卸のときはセッションcookieからpartnerIdを取得
@@ -82,15 +81,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // 入力をlines形式に正規化 (productIds は数量1のlines扱い)
   let normalizedLines: OrderLine[];
   if (lines && Array.isArray(lines) && lines.length > 0) {
+    normalizedLines = [];
     for (const l of lines) {
-      if (!l.productId || typeof l.quantity !== "number" || l.quantity < 1) {
+      const quantity = Math.floor(Number(l.quantity));
+      if (
+        !l.productId ||
+        !Number.isFinite(quantity) ||
+        quantity < 1 ||
+        quantity > 99
+      ) {
         return NextResponse.json(
-          { error: "each line requires productId and quantity>=1" },
+          { error: "each line requires productId and integer quantity 1..99" },
           { status: 400 }
         );
       }
+      normalizedLines.push({ productId: l.productId, quantity });
     }
-    normalizedLines = lines;
   } else if (productIds && Array.isArray(productIds) && productIds.length > 0) {
     normalizedLines = productIds.map((id) => ({ productId: id, quantity: 1 }));
   } else {
@@ -180,24 +186,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     cancel_url:
       priceTier === "retail" ? `${baseUrl}/cancel` : `${baseUrl}/partner`,
     locale: "ja",
-    ...(requestInvoice && {
-      invoice_creation: {
-        enabled: true,
-        invoice_data: {
-          description: `E-FIX ご注文 (${resolvedLines.map((rl) => rl!.product.name).join(", ")})`,
-          footer: INVOICE_FOOTER,
-          custom_fields: INVOICE_CUSTOM_FIELDS,
-          rendering_options: {
-            amount_tax_display: "include_inclusive_tax",
-          },
-          metadata: {
-            orderType: "main_product",
-            customerName: customer.name,
-            priceTier,
-          },
+    invoice_creation: {
+      enabled: true,
+      invoice_data: {
+        description: `E-FIX ご注文 (${resolvedLines.map((rl) => rl!.product.name).join(", ")})`,
+        footer: INVOICE_FOOTER,
+        custom_fields: INVOICE_CUSTOM_FIELDS,
+        rendering_options: {
+          amount_tax_display: "include_inclusive_tax",
+        },
+        metadata: {
+          orderType: "main_product",
+          customerName: customer.name,
+          priceTier,
         },
       },
-    }),
+    },
     metadata: {
       productIds: resolvedLines
         .map((rl) =>
@@ -214,7 +218,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       machineMaker: customer.machineMaker,
       machineModel: customer.machineModel,
       notes: customer.notes ?? "",
-      requestInvoice: requestInvoice ? "true" : "false",
+      requestInvoice: "true",
       priceTier,
       partnerId,
     },

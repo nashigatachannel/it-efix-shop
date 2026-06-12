@@ -55,7 +55,7 @@ export default function PrivacyPage() {
           </ul>
           <p className="mt-3">
             なお、クレジットカード番号・セキュリティコード等の決済情報は、
-            決済代行会社（PAY株式会社）が直接取得・保管し、当社は一切保持しません。
+            決済代行会社（Stripe, Inc.）が直接取得・保管し、当社は一切保持しません。
           </p>
         </Section>
 
@@ -84,9 +84,8 @@ export default function PrivacyPage() {
             業務委託先として、以下の事業者に必要最小限の個人情報を提供します。
           </p>
           <ul className="list-disc list-inside space-y-1 pl-2">
-            <li>クレジットカード決済処理: PAY株式会社（PAY.JP）</li>
-            <li>銀行振込・入金照合: GMOあおぞらネット銀行株式会社</li>
-            <li>会計処理・適格請求書発行: freee株式会社</li>
+            <li>決済処理・銀行振込・適格請求書発行: Stripe, Inc.</li>
+            <li>会計処理: freee株式会社</li>
             <li>配送業務: 各配送会社</li>
             <li>サイト運営基盤: Vercel Inc.</li>
           </ul>

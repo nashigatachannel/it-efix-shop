@@ -15,6 +15,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     return NextResponse.json({
+      session_id: session.id,
       payment_status: session.payment_status,
       amount_total: session.amount_total,
       customer_email:

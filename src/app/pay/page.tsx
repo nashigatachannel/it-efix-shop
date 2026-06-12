@@ -64,7 +64,7 @@ function makeBlankItem(): LineItem {
 export default function PayPage() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [customer, setCustomer] = useState<CustomerInfo>(EMPTY_CUSTOMER);
-  const [requestInvoice, setRequestInvoice] = useState(false);
+  const [requestInvoice] = useState(true);
   const [presetId, setPresetId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -139,7 +139,6 @@ export default function PayPage() {
   function resetAll() {
     setItems([]);
     setCustomer(EMPTY_CUSTOMER);
-    setRequestInvoice(false);
     setGeneratedUrl(null);
     setGeneratedTotal(null);
     setSubmitError(null);
@@ -169,7 +168,7 @@ export default function PayPage() {
             email: customer.email.trim(),
             phone: customer.phone.trim(),
           },
-          requestInvoice,
+          requestInvoice: true,
         }),
       });
 
@@ -286,14 +285,12 @@ export default function PayPage() {
                 id="request-invoice"
                 type="checkbox"
                 checked={requestInvoice}
-                onChange={(e) => {
-                  setRequestInvoice(e.target.checked);
-                  setGeneratedUrl(null);
-                }}
-                className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500"
+                disabled
+                readOnly
+                className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 opacity-90"
               />
               <span className="text-xs text-slate-300">
-                適格請求書（インボイス T2810703528253）の発行を希望する
+                適格請求書（インボイス T2810703528253）をStripeで自動発行する
               </span>
             </label>
           </section>

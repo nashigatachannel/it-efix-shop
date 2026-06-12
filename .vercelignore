@@ -16,6 +16,13 @@ node_modules
 *.xls
 *.pdf
 
+!public/**/*.png
+!public/**/*.jpg
+!public/**/*.jpeg
+!public/**/*.gif
+!public/**/*.webp
+!public/**/*.svg
+
 after-*.yml
 amazon-*.yml
 agpanda-*.yml

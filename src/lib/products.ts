@@ -3,6 +3,7 @@ export type ProductId =
   | "e-steer-20"
   | "e-steer-20-max"
   | "option-large-wheel"
+  | "option-nmea-tablet-cable"
   | "option-physical-button"
   | "option-multi-function"
   | "option-wireless-remote"
@@ -78,13 +79,14 @@ export const MAIN_PRODUCTS: Product[] = [
     wholesalePriceExTax: 720_000,
     distributorPriceExTax: 650_000,
     description:
-      "10.1インチディスプレイ搭載モデル。国産トラクター・コンバインのキャビン内に収まりやすく、最も人気のサイズ。",
+      "10.1インチディスプレイ搭載モデル。国産トラクターのキャビン内に収まりやすく、最も人気のサイズ。",
     features: [
       "10.1インチディスプレイ",
       "国産農機キャビンに最適",
       "高精度自動操舵 ±2.5cm",
       "ISOBUS対応 / 載せ替え可能",
     ],
+    image: "/home-assets/products/esteer-set-angle-left.png",
   },
   {
     id: "e-steer-20-max",
@@ -100,10 +102,11 @@ export const MAIN_PRODUCTS: Product[] = [
       "高精度自動操舵 ±2.5cm",
       "ISOBUS対応 / 載せ替え可能",
     ],
+    image: "/home-assets/products/esteer-set-20max.png",
   },
 ];
 
-export const OPTION_PRODUCTS: Product[] = [
+const DISCONTINUED_OPTION_PRODUCTS: Product[] = [
   {
     id: "option-large-wheel",
     name: "大型ハンドル（400mm）",
@@ -113,7 +116,23 @@ export const OPTION_PRODUCTS: Product[] = [
     description: "標準360mmより大きい400mmステアリングホイール。操作しやすさが向上。",
     features: ["400mm大径", "交換用ステアリングホイール"],
     isOption: true,
-    image: "https://efix-agriculture.oss-eu-central-1.aliyuncs.com/uploads/images/202506/b1d0f7ffffc7c825dffe43b6de3e73f1.jpg",
+    image: "/wholesale-assets/product-069.png",
+    isDiscontinued: true,
+  },
+];
+
+export const OPTION_PRODUCTS: Product[] = [
+  {
+    id: "option-nmea-tablet-cable",
+    name: "E20用 NMEAタブレットケーブル",
+    priceExTax: 30_000,
+    wholesalePriceExTax: 21_000,
+    distributorPriceExTax: 18_000,
+    description:
+      "eSteer20/20MAXのタブレットへNMEA信号を接続するための専用ケーブル。",
+    features: ["eSteer20/20MAX対応", "NMEA Cable for Tablet (AMP)"],
+    isOption: true,
+    image: "/wholesale-assets/product-074.png",
   },
   {
     id: "option-physical-button",
@@ -124,6 +143,7 @@ export const OPTION_PRODUCTS: Product[] = [
     description: "自動操舵のON/OFFを手元で切り替えられる物理ボタン。",
     features: ["ワンタッチ操作", "eSteer 20 MAX対応"],
     isOption: true,
+    image: "/wholesale-assets/product-076.png",
   },
   {
     id: "option-multi-function",
@@ -134,6 +154,7 @@ export const OPTION_PRODUCTS: Product[] = [
     description: "複数機能を割り当てられる多機能ボタンユニット。",
     features: ["多機能操作", "カスタマイズ可能"],
     isOption: true,
+    image: "/wholesale-assets/product-028.png",
   },
   {
     id: "option-wireless-remote",
@@ -144,12 +165,14 @@ export const OPTION_PRODUCTS: Product[] = [
     description: "無線で自動操舵を制御できるリモートボタン。",
     features: ["ワイヤレス操作", "離れた場所から制御可能"],
     isOption: true,
+    image: "/wholesale-assets/product-078.png",
   },
 ];
 
 export const ALL_PRODUCTS: Product[] = [
   ...MAIN_PRODUCTS,
   ...DISCONTINUED_PRODUCTS,
+  ...DISCONTINUED_OPTION_PRODUCTS,
   ...OPTION_PRODUCTS,
   ...DONATION_PRODUCTS,
 ];

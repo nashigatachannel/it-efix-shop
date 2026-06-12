@@ -1,7 +1,7 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentPartner, fetchPartnerById } from "@/lib/partner-auth";
 import { fetchPartnerOrders, type WebOrderRow } from "@/lib/sheets";
-import PartnerOrderForm from "@/components/PartnerOrderForm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,12 +19,16 @@ function statusLabel(o: WebOrderRow): string {
 
 function statusBadgeClass(o: WebOrderRow): string {
   if (o.paymentStatus === "paid") {
-    return "bg-emerald-900/40 text-emerald-300 border border-emerald-700/40";
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
   }
   if (o.paymentStatus === "unpaid") {
-    return "bg-amber-900/40 text-amber-300 border border-amber-700/40";
+    return "bg-amber-50 text-amber-700 border border-amber-200";
   }
-  return "bg-slate-800 text-slate-300";
+  return "bg-stone-100 text-stone-600 border border-stone-200";
+}
+
+function orderTotal(orders: WebOrderRow[]): number {
+  return orders.reduce((sum, order) => sum + (order.amountTotal ?? 0), 0);
 }
 
 export default async function PartnerPage() {
@@ -32,15 +36,27 @@ export default async function PartnerPage() {
   if (!session) {
     redirect("/partner/login");
   }
+
   const profile = await fetchPartnerById(session.partnerId);
   if (!profile) {
-    // マスタから消えた / 無効化された
     redirect("/partner/login?next=/partner");
   }
 
   const tierLabel = profile.tier === "distributor" ? "特価卸" : "通常卸";
   const accent =
-    profile.tier === "distributor" ? "text-amber-400" : "text-emerald-400";
+    profile.tier === "distributor" ? "text-amber-600" : "text-emerald-700";
+  const buttonColor =
+    profile.tier === "distributor"
+      ? "bg-amber-600 hover:bg-amber-500"
+      : "bg-emerald-700 hover:bg-emerald-600";
+  const eSteer20Href =
+    profile.tier === "distributor"
+      ? "/wholesale/special/esteer20"
+      : "/wholesale/esteer20";
+  const eSteer10Href =
+    profile.tier === "distributor"
+      ? "/wholesale/special/esteer10"
+      : "/wholesale/esteer10";
 
   let orders: WebOrderRow[] = [];
   let ordersLoadError: string | null = null;
@@ -48,119 +64,207 @@ export default async function PartnerPage() {
     orders = await fetchPartnerOrders(profile.partnerId);
     orders.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
   } catch (err) {
-    ordersLoadError = err instanceof Error ? err.message : "注文履歴の取得に失敗しました";
+    ordersLoadError =
+      err instanceof Error ? err.message : "注文履歴の取得に失敗しました";
   }
 
+  const recentOrders = orders.slice(0, 8);
+
   return (
-    <div className="min-h-screen bg-slate-950">
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className={`text-xl font-black tracking-widest ${accent}`}>
+    <div className="min-h-screen bg-[#f7faf6] text-stone-950">
+      <header className="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur-sm">
+        <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <span className={`text-2xl font-black tracking-widest ${accent}`}>
               E-FIX
             </span>
-            <span className="text-xs text-slate-500 border-l border-slate-700 pl-2">
-              {tierLabel} / {profile.companyName}
+            <span className="border-l border-stone-200 pl-3 text-xs font-semibold text-stone-500">
+              販売店ページ
             </span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs text-stone-500 sm:inline">
+              efix-shop.jp
+            </span>
+            <form action="/api/partner/logout" method="post">
+              <button
+                type="submit"
+                className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 shadow-sm hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+              >
+                ログアウト
+              </button>
+            </form>
           </div>
-          <form action="/api/partner/logout" method="post">
-            <button
-              type="submit"
-              className="text-xs text-slate-400 hover:text-red-400"
-            >
-              ログアウト
-            </button>
-          </form>
         </div>
       </header>
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-white">
-            {profile.companyName} 様 ご発注
+
+      <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+        <section className="mb-8">
+          <p className={`text-sm font-bold ${accent}`}>{tierLabel}</p>
+          <h1 className="mt-2 text-3xl font-black">
+            {profile.companyName} 様
           </h1>
-          <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-            {tierLabel}価格でのご発注ページです。製品セットおよびオプション部品から数量をご指定ください。
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+            販売店様向けの注文入口です。現行機の eSteer 20 / 20MAX と、旧型の
+            eSteer 10 を分けて注文できます。請求書は納品日時に合わせて別途作成します。
           </p>
-          <p className="mt-2 text-xs text-slate-500">
-            ご担当者: {profile.contactName || "—"} ／ ID:{" "}
+          <p className="mt-2 text-xs text-stone-500">
+            ご担当者: {profile.contactName || "—"} / 販売店ID:{" "}
             <span className="font-mono">{profile.partnerId}</span>
           </p>
-        </div>
-        <PartnerOrderForm
-          tier={profile.tier}
-          tierLabel={tierLabel}
-          defaults={{
-            companyName: profile.companyName,
-            contactName: profile.contactName,
-            email: profile.email,
-            phone: profile.phone,
-            postalCode: profile.postalCode,
-            address: profile.address,
-          }}
-        />
+        </section>
 
-        <section className="mt-12">
-          <h2 className={`text-xl font-bold ${accent} mb-4`}>
-            ご注文履歴
-          </h2>
+        <section className="hidden">
+          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold text-stone-500">注文履歴</p>
+            <p className="mt-2 text-3xl font-black">{orders.length}</p>
+          </div>
+          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold text-stone-500">履歴合計</p>
+            <p className={`mt-2 font-mono text-3xl font-black ${accent}`}>
+              {formatYen(orderTotal(orders))}
+            </p>
+          </div>
+          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold text-stone-500">ログインURL</p>
+            <p className="mt-2 break-all font-mono text-sm text-stone-700">
+              efix-shop.jp/partner/login
+            </p>
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-4 md:grid-cols-2">
+          <Link
+            href={eSteer20Href}
+            className="rounded-lg border border-stone-200 bg-white p-6 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40"
+          >
+            <p className="text-xs font-bold tracking-[0.2em] text-emerald-700">
+              CURRENT MODEL
+            </p>
+            <h2 className="mt-3 text-2xl font-black">
+              eSteer 20 / 20MAX 注文
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-stone-600">
+              現行機の本体、標準部品、オプション、国産ブラケットを注文します。
+            </p>
+            <span
+              className={`mt-5 inline-flex rounded-md px-4 py-2 text-sm font-bold text-white ${buttonColor}`}
+            >
+              現行機ページへ
+            </span>
+          </Link>
+
+          <Link
+            href={eSteer10Href}
+            className="rounded-lg border border-stone-200 bg-white p-6 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40"
+          >
+            <p className="text-xs font-bold tracking-[0.2em] text-stone-500">
+              LEGACY MODEL
+            </p>
+            <h2 className="mt-3 text-2xl font-black">eSteer 10 注文</h2>
+            <p className="mt-3 text-sm leading-6 text-stone-600">
+              旧型機の本体、対応部品、共用部品を20/20MAXと分けて注文します。
+            </p>
+            <span className="mt-5 inline-flex rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 shadow-sm hover:border-emerald-300 hover:text-emerald-700">
+              旧型ページへ
+            </span>
+          </Link>
+        </section>
+
+        <details className="group mt-12">
+          <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
+            <div>
+              <p className={`text-sm font-bold ${accent}`}>ORDER HISTORY</p>
+              <h2 className="mt-1 text-2xl font-black">注文履歴</h2>
+            </div>
+            <p className="text-xs text-stone-500">
+              決済注文の履歴を新しい順に表示します。
+            </p>
+            <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
+              履歴を表示
+            </span>
+            <span className="hidden rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 group-open:inline-flex">
+              閉じる
+            </span>
+          </summary>
+
+          <div className="space-y-4">
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold text-stone-500">注文履歴</p>
+              <p className="mt-2 text-3xl font-black">{orders.length}</p>
+            </div>
+            <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold text-stone-500">履歴合計</p>
+              <p className={`mt-2 font-mono text-3xl font-black ${accent}`}>
+                {formatYen(orderTotal(orders))}
+              </p>
+            </div>
+          </div>
+
           {ordersLoadError && (
-            <div className="bg-red-900/20 border border-red-700/40 rounded-lg p-3 text-sm text-red-300">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {ordersLoadError}
             </div>
           )}
-          {!ordersLoadError && orders.length === 0 && (
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-center text-slate-400">
-              まだご注文はありません。
-            </div>
-          )}
-          {orders.length > 0 && (
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-900 border-b border-slate-800">
-                  <tr className="text-slate-400 text-left">
-                    <th className="px-4 py-3 font-semibold">注文日時</th>
-                    <th className="px-4 py-3 font-semibold">商品</th>
-                    <th className="px-4 py-3 font-semibold text-right">
-                      金額（税込）
-                    </th>
-                    <th className="px-4 py-3 font-semibold">支払期日</th>
-                    <th className="px-4 py-3 font-semibold">状態</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {orders.map((o) => (
-                    <tr
-                      key={o.sessionId || `${o.serialNumber}-${o.orderedAt}`}
-                      className="hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-slate-300">
-                        {o.orderedAt}
-                      </td>
-                      <td className="px-4 py-3 text-white">{o.model}</td>
-                      <td className="px-4 py-3 text-right text-emerald-400 font-mono">
-                        {formatYen(o.amountTotal)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {o.paymentDueAt || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${statusBadgeClass(o)}`}
-                        >
-                          {statusLabel(o)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
 
-        <p className="mt-8 text-xs text-slate-500">
-          ※ 決済完了後、適格請求書（登録番号 T2810703528253）が自動でメール送付されます。請求書PDFはご入力のメールアドレス宛に届きます。
-        </p>
+          {!ordersLoadError && recentOrders.length === 0 && (
+            <div className="rounded-lg border border-stone-200 bg-white p-6 text-center text-stone-500 shadow-sm">
+              まだ注文はありません。
+            </div>
+          )}
+
+          {recentOrders.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="min-w-[760px] w-full text-left text-sm">
+                  <thead className="border-b border-stone-200 bg-stone-50 text-xs font-bold text-stone-500">
+                    <tr>
+                      <th className="px-4 py-3">注文日時</th>
+                      <th className="px-4 py-3">商品</th>
+                      <th className="px-4 py-3 text-right">金額（税込）</th>
+                      <th className="px-4 py-3">支払期日</th>
+                      <th className="px-4 py-3">状態</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {recentOrders.map((order) => (
+                      <tr
+                        key={
+                          order.sessionId ||
+                          `${order.serialNumber}-${order.orderedAt}`
+                        }
+                        className="transition-colors hover:bg-emerald-50/40"
+                      >
+                        <td className="px-4 py-3 text-stone-600">
+                          {order.orderedAt}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-stone-900">{order.model}</td>
+                        <td className="px-4 py-3 text-right font-mono text-emerald-700">
+                          {formatYen(order.amountTotal)}
+                        </td>
+                        <td className="px-4 py-3 text-stone-600">
+                          {order.paymentDueAt || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded px-2 py-0.5 text-xs ${statusBadgeClass(
+                              order,
+                            )}`}
+                          >
+                            {statusLabel(order)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          </div>
+        </details>
       </main>
     </div>
   );

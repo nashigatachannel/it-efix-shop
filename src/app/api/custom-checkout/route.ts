@@ -23,7 +23,6 @@ interface CustomCheckoutRequest {
     email: string;
     phone: string;
   };
-  requestInvoice?: boolean;
 }
 
 const MAX_AMOUNT_PER_ITEM = 10_000_000;
@@ -98,7 +97,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { customer, requestInvoice } = body;
+  const { customer } = body;
 
   if (!customer?.name || !customer?.email || !customer?.phone) {
     return NextResponse.json(
@@ -168,23 +167,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/cancel`,
     locale: "ja",
-    ...(requestInvoice && {
-      invoice_creation: {
-        enabled: true,
-        invoice_data: {
-          description: summary,
-          footer: INVOICE_FOOTER,
-          custom_fields: INVOICE_CUSTOM_FIELDS,
-          rendering_options: {
-            amount_tax_display: "include_inclusive_tax",
-          },
-          metadata: {
-            orderType: "custom_payment",
-            customerName: customer.name,
-          },
+    invoice_creation: {
+      enabled: true,
+      invoice_data: {
+        description: summary,
+        footer: INVOICE_FOOTER,
+        custom_fields: INVOICE_CUSTOM_FIELDS,
+        rendering_options: {
+          amount_tax_display: "include_inclusive_tax",
+        },
+        metadata: {
+          orderType: "custom_payment",
+          customerName: customer.name,
         },
       },
-    }),
+    },
     metadata: {
       type: "custom_payment",
       description: summary,
@@ -193,7 +190,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       customerPhone: customer.phone,
       lineItemCount: String(normalized.length),
       totalAmount: String(total),
-      requestInvoice: requestInvoice ? "true" : "false",
+      requestInvoice: "true",
     },
   });
 

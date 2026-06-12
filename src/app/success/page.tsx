@@ -10,6 +10,7 @@ interface SessionStatus {
   payment_status: string;
   amount_total: number | null;
   customer_email: string;
+  session_id?: string;
 }
 
 function SuccessContent() {
@@ -102,6 +103,17 @@ function SuccessContent() {
                 takuma.ishikawa.line@gmail.com
               </a>
             </p>
+          </div>
+
+          <div className="mb-3">
+            <Link
+              href={`/orders/cancel${
+                sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""
+              }`}
+              className="inline-block bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-8 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-[#0a0f1e]"
+            >
+              注文をキャンセルする
+            </Link>
           </div>
 
           <Link
