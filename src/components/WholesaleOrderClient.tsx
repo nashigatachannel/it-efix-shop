@@ -291,7 +291,8 @@ function HeroTitle({ title }: { title: string }) {
     return (
       <>
         <span className="block">eSteer 20 /</span>
-        <span className="block whitespace-nowrap">20MAX 注文</span>
+        <span className="block whitespace-nowrap">20MAX</span>
+        <span className="block">注文</span>
       </>
     );
   }
