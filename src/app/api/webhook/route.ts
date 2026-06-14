@@ -77,6 +77,32 @@ function paymentDueLabel(session: Stripe.Checkout.Session): string {
   return "";
 }
 
+function paymentStatusForEvent(
+  session: Stripe.Checkout.Session,
+  eventType: string,
+): string {
+  if (eventType === "checkout.session.async_payment_failed") {
+    return "payment_failed";
+  }
+  if (eventType === "checkout.session.expired") {
+    return "expired";
+  }
+  return session.payment_status ?? "";
+}
+
+function paymentNoteForEvent(
+  session: Stripe.Checkout.Session,
+  eventType: string,
+): string {
+  if (eventType === "checkout.session.async_payment_failed") {
+    return "支払い失敗";
+  }
+  if (eventType === "checkout.session.expired") {
+    return "期限切れ";
+  }
+  return paymentDueLabel(session);
+}
+
 function selfInstallLabel(metadata: Record<string, string>): string {
   if (metadata.selfInstall === "true") return "取付なし(自分で取付)";
   if (metadata.selfInstall === "false") return "取付サービス利用";
@@ -85,7 +111,8 @@ function selfInstallLabel(metadata: Record<string, string>): string {
 
 function buildSheetRow(
   session: Stripe.Checkout.Session,
-  serialNumber: number
+  serialNumber: number,
+  eventType: string,
 ): (string | number)[] {
   const metadata = session.metadata ?? {};
   const requestInvoice =
@@ -102,7 +129,7 @@ function buildSheetRow(
     "", // サブID（分割発注時に手入力）
     toJstDateString(new Date()),
     session.id,
-    session.payment_status ?? "",
+    paymentStatusForEvent(session, eventType),
     paymentMethodLabel(session),
     modelDisplay,
     session.amount_total ?? "",
@@ -116,7 +143,7 @@ function buildSheetRow(
     metadata.notes ?? "",
     requestInvoice ? "希望" : "",
     metadata.partnerId ?? "",
-    paymentDueLabel(session),
+    paymentNoteForEvent(session, eventType),
     // V3 追加列(T〜Z)
     metadata.customerPrefecture ?? "",
     selfInstallLabel(metadata),
@@ -126,6 +153,65 @@ function buildSheetRow(
     "", // 取付完了日（管理画面で手動入力）
     "", // 返送伝票番号（管理画面で手動入力）
   ];
+}
+
+async function findWebOrderRowBySessionId(
+  sheets: ReturnType<typeof google.sheets>,
+  sessionId: string,
+): Promise<{ rowNumber: number; values: unknown[] } | null> {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${WEB_ORDERS_SHEET}!A2:Z`,
+  });
+  const values = res.data.values ?? [];
+  const index = values.findIndex(
+    (row) => String(row[3] ?? "").trim() === sessionId,
+  );
+  if (index < 0) return null;
+  return { rowNumber: index + 2, values: values[index] };
+}
+
+async function upsertWebOrder(
+  sheets: ReturnType<typeof google.sheets>,
+  session: Stripe.Checkout.Session,
+  eventType: string,
+): Promise<{ created: boolean; serialNumber: string | number }> {
+  const existing = await findWebOrderRowBySessionId(sheets, session.id);
+  const existingSerial = existing ? Number(existing.values[0]) : NaN;
+  const serialNumber = Number.isFinite(existingSerial)
+    ? existingSerial
+    : await getNextSerialNumber(sheets);
+  const row = buildSheetRow(session, serialNumber, eventType);
+
+  if (existing) {
+    const current = Array.from(
+      { length: 26 },
+      (_, index) => String(existing.values[index] ?? ""),
+    );
+    row[0] = current[0] || row[0];
+    row[1] = current[1] || row[1];
+    row[2] = current[2] || row[2];
+    row[24] = current[24] || row[24];
+    row[25] = current[25] || row[25];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${WEB_ORDERS_SHEET}!A${existing.rowNumber}:Z${existing.rowNumber}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [row] },
+    });
+    return { created: false, serialNumber: row[0] };
+  }
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${WEB_ORDERS_SHEET}!A:Z`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [row],
+    },
+  });
+  return { created: true, serialNumber };
 }
 
 async function upsertPendingModel(
@@ -151,6 +237,11 @@ async function upsertPendingModel(
       const rowNumber = idx + 2;
       const existingCount = Number(values[idx][3]) || 0;
       const existingSessions = String(values[idx][4] ?? "");
+      const sessionIds = existingSessions
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (sessionIds.includes(sessionId)) return;
       const newSessions = existingSessions
         ? `${existingSessions},${sessionId}`
         : sessionId;
@@ -206,37 +297,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (
     event.type === "checkout.session.completed" ||
-    event.type === "checkout.session.async_payment_succeeded"
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed" ||
+    event.type === "checkout.session.expired"
   ) {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    if (session.payment_status !== "paid") {
-      console.log(
-        `Skipping Sheets write: session=${session.id} status=${session.payment_status}`
-      );
-      return NextResponse.json({ received: true });
-    }
-
     try {
       const sheets = await getGoogleSheetsClient();
-      const serialNumber = await getNextSerialNumber(sheets);
-      const row = buildSheetRow(session, serialNumber);
-
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${WEB_ORDERS_SHEET}!A:Z`,
-        valueInputOption: "USER_ENTERED",
-        requestBody: {
-          values: [row],
-        },
-      });
+      const result = await upsertWebOrder(sheets, session, event.type);
       console.log(
-        `Order written to Sheets: serial=${serialNumber} session=${session.id} (${event.type})`
+        `Order ${result.created ? "written" : "updated"} in Sheets: serial=${result.serialNumber} session=${session.id} status=${paymentStatusForEvent(session, event.type)} (${event.type})`
       );
 
       // 機種保留マスタへの蓄積(retail 注文のみ)
       const metadata = session.metadata ?? {};
-      if (metadata.priceTier === "retail" || !metadata.priceTier) {
+      if (
+        session.payment_status === "paid" &&
+        (metadata.priceTier === "retail" || !metadata.priceTier)
+      ) {
         await upsertPendingModel(
           sheets,
           metadata.machineMaker ?? "",
@@ -247,13 +326,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } catch (err) {
       console.error("Failed to write to Google Sheets:", err);
     }
-  }
-
-  if (event.type === "checkout.session.async_payment_failed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    console.error(
-      `Bank transfer payment failed: session=${session.id} customer=${session.metadata?.customerName ?? "unknown"}`
-    );
   }
 
   return NextResponse.json({ received: true });

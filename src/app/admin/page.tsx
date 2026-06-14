@@ -12,6 +12,9 @@ function formatYen(n: number | null): string {
 function statusLabel(row: WebOrderRow): string {
   if (row.paymentStatus === "paid") return "入金済";
   if (row.paymentStatus === "unpaid") return "入金待ち";
+  if (row.paymentStatus === "payment_failed") return "支払い失敗";
+  if (row.paymentStatus === "expired") return "期限切れ";
+  if (row.paymentStatus === "canceled") return "キャンセル済み";
   return row.paymentStatus || "—";
 }
 
@@ -21,6 +24,13 @@ function statusBadgeClass(row: WebOrderRow): string {
   }
   if (row.paymentStatus === "unpaid") {
     return "bg-amber-900/40 text-amber-300 border border-amber-700/40";
+  }
+  if (
+    row.paymentStatus === "payment_failed" ||
+    row.paymentStatus === "expired" ||
+    row.paymentStatus === "canceled"
+  ) {
+    return "bg-red-900/30 text-red-300 border border-red-700/40";
   }
   return "bg-slate-800 text-slate-300";
 }

@@ -132,6 +132,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
 
   let refundId = "";
+  let cancelNote = "キャンセル済み";
   const intentId = paymentIntentId(session);
   if (session.payment_status === "paid" && intentId) {
     const refund = await stripe.refunds.create(
@@ -147,6 +148,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { idempotencyKey: `cancel-order-${rowSessionId}` },
     );
     refundId = refund.id;
+    cancelNote = `返金処理: ${refundId}`;
+  } else if (session.status === "open") {
+    await stripe.checkout.sessions.expire(rowSessionId);
+    cancelNote = "Stripe Session期限切れ";
+  } else if (intentId) {
+    try {
+      await stripe.paymentIntents.cancel(intentId, {
+        cancellation_reason: "requested_by_customer",
+      });
+      cancelNote = "Stripe PaymentIntentキャンセル";
+    } catch (err) {
+      console.error("Failed to cancel unpaid Stripe payment:", err);
+      return NextResponse.json(
+        {
+          error:
+            "Stripe側の未入金決済をキャンセルできませんでした。管理者に連絡してください。",
+        },
+        { status: 502 },
+      );
+    }
   }
 
   const rowNumber = index + 2;
@@ -161,7 +182,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         },
         {
           range: sheetRange(WEB_ORDERS_SHEET, `S${rowNumber}`),
-          values: [[refundId ? `返金処理: ${refundId}` : "キャンセル済み"]],
+          values: [[cancelNote]],
         },
       ],
     },

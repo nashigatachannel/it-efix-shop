@@ -35,6 +35,12 @@ export default function AdminLayout({
             >
               注文一覧
             </Link>
+            <Link
+              href="/admin/wholesale"
+              className="text-slate-300 hover:text-emerald-400"
+            >
+              卸注文
+            </Link>
             <LogoutButton />
           </nav>
         </div>
