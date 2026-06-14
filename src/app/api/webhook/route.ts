@@ -4,7 +4,10 @@ import { google } from "googleapis";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!;
+const SPREADSHEET_ID =
+  process.env.GOOGLE_ORDERS_SPREADSHEET_ID ??
+  process.env.GOOGLE_SPREADSHEET_ID ??
+  "";
 const WEB_ORDERS_SHEET = "Web注文";
 const PENDING_MODELS_SHEET = "機種保留マスタ";
 

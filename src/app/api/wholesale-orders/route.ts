@@ -120,6 +120,7 @@ function normalizeLine(raw: RequestItem, catalogItems: WholesaleCatalogItem[]): 
 function spreadsheetId(): string {
   return (
     process.env.GOOGLE_WHOLESALE_SPREADSHEET_ID ??
+    process.env.GOOGLE_ORDERS_SPREADSHEET_ID ??
     process.env.GOOGLE_SPREADSHEET_ID ??
     DEFAULT_WHOLESALE_SPREADSHEET_ID
   );

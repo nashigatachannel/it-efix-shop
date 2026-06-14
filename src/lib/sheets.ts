@@ -1,6 +1,9 @@
 import { google, sheets_v4 } from "googleapis";
 
-export const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID ?? "";
+export const SPREADSHEET_ID =
+  process.env.GOOGLE_ORDERS_SPREADSHEET_ID ??
+  process.env.GOOGLE_SPREADSHEET_ID ??
+  "";
 export const WEB_ORDERS_SHEET = "Web注文";
 
 export function getSheetsClient(): sheets_v4.Sheets {
