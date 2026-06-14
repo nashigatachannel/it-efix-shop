@@ -7,6 +7,7 @@ import {
   type ProductId,
   type PriceTier,
 } from "@/lib/products";
+import { getInstallationFeeIncTax } from "@/lib/installation";
 import {
   JP_TAX_RATE_ID,
   INVOICE_FOOTER,
@@ -17,12 +18,22 @@ import { getCurrentPartner } from "@/lib/partner-auth";
 interface CustomerInfo {
   name: string;
   postalCode: string;
-  address: string;
+  // V3: 都道府県と市町村以降を分離。後方互換のため address も受け付ける。
+  prefecture?: string;
+  addressDetail?: string;
+  address?: string;
   phone: string;
   email: string;
   machineMaker: string;
   machineModel: string;
   notes?: string;
+}
+
+interface InstallationOptions {
+  selfInstall: boolean;
+  desiredDate1?: string;
+  desiredDate2?: string;
+  desiredDate3?: string;
 }
 
 interface OrderLine {
@@ -36,8 +47,19 @@ interface CheckoutRequestBody {
   // 卸/特価卸: 数量付きライン
   lines?: OrderLine[];
   customer: CustomerInfo;
+  installation?: InstallationOptions;
   /** "retail" | "wholesale" | "distributor"。未指定はretail */
   priceTier?: PriceTier;
+}
+
+// V3: 注文可能な都道府県。北海道のみ。将来エリア拡大時はここに追加する。
+const AVAILABLE_PREFECTURES = new Set<string>(["北海道"]);
+
+function buildAddressString(customer: CustomerInfo): string {
+  if (customer.prefecture && customer.addressDetail) {
+    return `${customer.prefecture} ${customer.addressDetail}`.trim();
+  }
+  return customer.address?.trim() ?? "";
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -49,7 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { productIds, lines, customer } = body;
+  const { productIds, lines, customer, installation } = body;
   const priceTier: PriceTier = body.priceTier ?? "retail";
 
   // 卸/特価卸のときはセッションcookieからpartnerIdを取得
@@ -76,6 +98,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { error: "customer.name and customer.email are required" },
       { status: 400 }
     );
+  }
+
+  // V3: 一般客(retail)は都道府県を必須かつ販売可能エリアのみ
+  if (priceTier === "retail") {
+    if (customer.prefecture) {
+      if (!AVAILABLE_PREFECTURES.has(customer.prefecture)) {
+        return NextResponse.json(
+          {
+            error:
+              "現在は北海道のみ販売しております。本州・四国・九州への展開は順次拡大予定です。",
+          },
+          { status: 400 }
+        );
+      }
+    }
+    if (!buildAddressString(customer)) {
+      return NextResponse.json(
+        { error: "customer.prefecture and customer.addressDetail are required" },
+        { status: 400 }
+      );
+    }
   }
 
   // 入力をlines形式に正規化 (productIds は数量1のlines扱い)
@@ -136,9 +179,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // V3: 取付サービスのオプトアウト(retail tier 限定)
+  const selfInstall =
+    priceTier === "retail" && installation?.selfInstall === true;
+
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ??
     (request.headers.get("origin") ?? "http://localhost:3000");
+
+  const customerAddressString = buildAddressString(customer);
 
   // Bank Transfer は customer ID が必須なので Stripe Customer を作成
   const stripeCustomer = await stripe.customers.create({
@@ -148,7 +197,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     preferred_locales: ["ja"],
     metadata: {
       postalCode: customer.postalCode,
-      address: customer.address,
+      address: customerAddressString,
       machineMaker: customer.machineMaker,
       machineModel: customer.machineModel,
     },
@@ -168,14 +217,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     line_items: resolvedLines.map((rl) => {
       const priceExTax =
         getPriceForTier(rl!.product, priceTier) ?? rl!.product.priceExTax;
+      const baseUnitIncTax = calcTaxIncluded(priceExTax);
+      const installationDiscount = selfInstall
+        ? getInstallationFeeIncTax(rl!.product.id)
+        : 0;
+      const adjustedUnitIncTax = Math.max(0, baseUnitIncTax - installationDiscount);
+      const displayName =
+        installationDiscount > 0
+          ? `${rl!.product.name}（取付サービスなし）`
+          : rl!.product.name;
       return {
         price_data: {
           currency: "jpy",
           product_data: {
-            name: rl!.product.name,
+            name: displayName,
             description: rl!.product.description,
           },
-          unit_amount: calcTaxIncluded(priceExTax),
+          unit_amount: adjustedUnitIncTax,
         },
         quantity: rl!.quantity,
         tax_rates: [JP_TAX_RATE_ID],
@@ -189,7 +247,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     invoice_creation: {
       enabled: true,
       invoice_data: {
-        description: `E-FIX ご注文 (${resolvedLines.map((rl) => rl!.product.name).join(", ")})`,
+        description: `E-FIX ご注文 (${resolvedLines.map((rl) => rl!.product.name).join(", ")})${selfInstall ? "（取付サービスなし）" : ""}`,
         footer: INVOICE_FOOTER,
         custom_fields: INVOICE_CUSTOM_FIELDS,
         rendering_options: {
@@ -212,7 +270,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .join(","),
       customerName: customer.name,
       customerPostalCode: customer.postalCode,
-      customerAddress: customer.address,
+      customerPrefecture: customer.prefecture ?? "",
+      customerAddress: customerAddressString,
       customerPhone: customer.phone,
       customerEmail: customer.email,
       machineMaker: customer.machineMaker,
@@ -221,6 +280,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       requestInvoice: "true",
       priceTier,
       partnerId,
+      selfInstall: selfInstall ? "true" : "false",
+      desiredDate1: installation?.desiredDate1 ?? "",
+      desiredDate2: installation?.desiredDate2 ?? "",
+      desiredDate3: installation?.desiredDate3 ?? "",
     },
   });
 

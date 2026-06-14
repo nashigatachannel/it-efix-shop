@@ -14,6 +14,7 @@ export function getSheetsClient(): sheets_v4.Sheets {
   return google.sheets({ version: "v4", auth });
 }
 
+// V3: 列 A〜Z（26列）。V2 までの A〜S（19列）と互換性を保ちつつ、T〜Z の V3 拡張列を追加。
 export interface WebOrderRow {
   serialNumber: number | null;
   subId: string;
@@ -34,6 +35,14 @@ export interface WebOrderRow {
   invoiceRequested: boolean;
   partnerId: string;
   paymentDueAt: string;
+  // V3 追加列
+  customerPrefecture: string;
+  installationLabel: string;
+  desiredDate1: string;
+  desiredDate2: string;
+  desiredDate3: string;
+  installedAt: string;
+  returnTrackingNumber: string;
 }
 
 function toNumberOrNull(v: unknown): number | null {
@@ -63,6 +72,13 @@ function parseRow(row: unknown[]): WebOrderRow {
     invoiceRequested: row[16] === "希望",
     partnerId: String(row[17] ?? ""),
     paymentDueAt: String(row[18] ?? ""),
+    customerPrefecture: String(row[19] ?? ""),
+    installationLabel: String(row[20] ?? ""),
+    desiredDate1: String(row[21] ?? ""),
+    desiredDate2: String(row[22] ?? ""),
+    desiredDate3: String(row[23] ?? ""),
+    installedAt: String(row[24] ?? ""),
+    returnTrackingNumber: String(row[25] ?? ""),
   };
 }
 
@@ -71,7 +87,7 @@ export async function fetchWebOrders(): Promise<WebOrderRow[]> {
   const sheets = getSheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${WEB_ORDERS_SHEET}!A2:S`,
+    range: `${WEB_ORDERS_SHEET}!A2:Z`,
   });
   return (res.data.values ?? []).map(parseRow);
 }

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -12,19 +12,32 @@ import {
   type Product,
   type ProductId,
 } from "@/lib/products";
+import {
+  calcInstallationDiscount,
+  getInstallationFeeIncTax,
+  hasInstallationService,
+} from "@/lib/installation";
 
 // --- 型定義 ---
 
 interface CustomerInfo {
   name: string;
   postalCode: string;
-  address: string;
+  prefecture: string;
+  addressDetail: string;
   phone: string;
   email: string;
   machineMaker: string;
   machineModel: string;
   notes: string;
   requestInvoice: boolean;
+}
+
+interface InstallationOptions {
+  selfInstall: boolean;
+  desiredDate1: string;
+  desiredDate2: string;
+  desiredDate3: string;
 }
 
 interface AgreementState {
@@ -45,13 +58,21 @@ interface OrderLineItem {
 const EMPTY_CUSTOMER: CustomerInfo = {
   name: "",
   postalCode: "",
-  address: "",
+  prefecture: "",
+  addressDetail: "",
   phone: "",
   email: "",
   machineMaker: "",
   machineModel: "",
   notes: "",
   requestInvoice: true,
+};
+
+const EMPTY_INSTALLATION: InstallationOptions = {
+  selfInstall: false,
+  desiredDate1: "",
+  desiredDate2: "",
+  desiredDate3: "",
 };
 
 const EMPTY_AGREEMENT: AgreementState = {
@@ -66,6 +87,21 @@ const ORDER_PRODUCTS: Product[] = [
   ...OPTION_PRODUCTS,
   ...DONATION_PRODUCTS,
 ];
+
+// 47都道府県（北海道を先頭に）。注文可能な都道府県は AVAILABLE_PREFECTURES で制御。
+const JAPANESE_PREFECTURES = [
+  "北海道",
+  "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
+  "岐阜県", "静岡県", "愛知県", "三重県",
+  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+  "徳島県", "香川県", "愛媛県", "高知県",
+  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県",
+  "沖縄県",
+] as const;
+const AVAILABLE_PREFECTURES: readonly string[] = ["北海道"];
 
 function clampQuantity(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 0;
@@ -91,6 +127,23 @@ function buildOrderLines(quantities: ProductQuantities): OrderLineItem[] {
 
 function calcLinesTotal(lines: OrderLineItem[]): number {
   return lines.reduce((sum, line) => sum + line.lineTotalIncTax, 0);
+}
+
+function hasInstallationEligibleLine(lines: OrderLineItem[]): boolean {
+  return lines.some((line) => hasInstallationService(line.product.id));
+}
+
+function tomorrowJstISO(): string {
+  const now = new Date();
+  const jst = new Date(now.getTime() + (9 + 24) * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
+
+function maxDesiredDateISO(): string {
+  // 翌日から90日後まで選択可能
+  const now = new Date();
+  const future = new Date(now.getTime() + (9 + 24 * 90) * 60 * 60 * 1000);
+  return future.toISOString().slice(0, 10);
 }
 
 // --- プログレスバー ---
@@ -267,6 +320,9 @@ function ProductQuantityCard({
 }) {
   const isSelected = quantity > 0;
   const unitPriceIncTax = calcTaxIncluded(product.priceExTax);
+  const installationFee = hasInstallationService(product.id)
+    ? getInstallationFeeIncTax(product.id)
+    : 0;
 
   return (
     <div
@@ -292,6 +348,11 @@ function ProductQuantityCard({
               ¥{formatPrice(unitPriceIncTax)}
             </p>
             <p className="text-xs text-[#88928d]">税込 / 1点</p>
+            {installationFee > 0 && (
+              <p className="mt-1 text-[10px] text-[#88928d]">
+                取付サービス込み
+              </p>
+            )}
           </div>
         </div>
 
@@ -323,17 +384,99 @@ function ProductQuantityCard({
   );
 }
 
+function InstallationOptOutCard({
+  lines,
+  selfInstall,
+  onToggle,
+}: {
+  lines: OrderLineItem[];
+  selfInstall: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  const eligibleLines = lines.filter((line) =>
+    hasInstallationService(line.product.id),
+  );
+  if (eligibleLines.length === 0) return null;
+
+  const { totalDiscount, lineBreakdown } = calcInstallationDiscount(
+    eligibleLines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+    true,
+  );
+
+  return (
+    <div className="mb-8 rounded-xl border border-[#eadfce] bg-white p-5">
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={selfInstall}
+          onChange={(e) => onToggle(e.target.checked)}
+          className="mt-1 h-5 w-5 rounded border-[#d8c9aa] bg-white text-[#0b806b] focus:ring-2 focus:ring-[#0b806b]/30"
+        />
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-[#26322f]">
+            取付サービスは不要(自分で取付する)
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-[#607069]">
+            本体価格には現地への取付サービスが標準で含まれています。
+            ご自身で取付される場合はこのチェックを入れると、取付サービス分が割引されます。
+          </p>
+          <ul className="mt-3 space-y-1 text-xs text-[#394842]">
+            {lineBreakdown.map((line) => {
+              const product = eligibleLines.find(
+                (l) => l.product.id === line.productId,
+              )?.product;
+              return (
+                <li key={line.productId} className="flex justify-between gap-3">
+                  <span>
+                    {product?.name ?? line.productId} × {line.quantity}
+                  </span>
+                  <span className="font-mono">
+                    -¥{formatPrice(line.lineDiscount)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {selfInstall && (
+            <>
+              <p className="mt-3 text-sm font-bold text-[#b58a36]">
+                取付サービス割引: -¥{formatPrice(totalDiscount)}(税込)
+              </p>
+              <div className="mt-3 rounded-lg border border-[#f0e1c3] bg-[#fbf3e0] p-3 text-xs leading-relaxed text-[#7a5b1d]">
+                <p className="font-semibold">取付サービス不要を選択した場合のご注意</p>
+                <ul className="mt-1 list-disc pl-4">
+                  <li>ブラケットの型番は別途お問い合わせください</li>
+                  <li>自社取付に起因するトラブルは保証対象外となります</li>
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
+      </label>
+    </div>
+  );
+}
+
 function Step1Products({
   quantities,
   onQuantityChange,
+  selfInstall,
+  onSelfInstallToggle,
   onNext,
 }: {
   quantities: ProductQuantities;
   onQuantityChange: (id: ProductId, quantity: number) => void;
+  selfInstall: boolean;
+  onSelfInstallToggle: (next: boolean) => void;
   onNext: () => void;
 }) {
   const lines = buildOrderLines(quantities);
   const subtotal = calcLinesTotal(lines);
+  const { totalDiscount } = calcInstallationDiscount(
+    lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+    selfInstall,
+  );
+  const adjustedTotal = subtotal - totalDiscount;
   const hasAnySelection = lines.length > 0;
 
   return (
@@ -360,6 +503,13 @@ function Step1Products({
           ))}
         </div>
       </fieldset>
+
+      {/* 取付サービス不要オプション(本体製品が選択されているときのみ) */}
+      <InstallationOptOutCard
+        lines={lines}
+        selfInstall={selfInstall}
+        onToggle={onSelfInstallToggle}
+      />
 
       {/* オプション */}
       <fieldset className="mb-8">
@@ -403,10 +553,26 @@ function Step1Products({
       <div className="rounded-xl border border-[#eadfce] bg-white p-4 mb-8">
         <div className="flex justify-between items-center">
           <span className="text-[#394842] font-medium">小計（税込）</span>
-          <span className="text-2xl font-black text-[#0b806b]">
+          <span className="text-xl font-black text-[#26322f]">
             ¥{formatPrice(subtotal)}
           </span>
         </div>
+        {totalDiscount > 0 && (
+          <div className="mt-2 flex justify-between items-center text-sm">
+            <span className="text-[#b58a36]">取付サービス割引</span>
+            <span className="font-mono text-[#b58a36]">
+              -¥{formatPrice(totalDiscount)}
+            </span>
+          </div>
+        )}
+        {totalDiscount > 0 && (
+          <div className="mt-3 flex justify-between items-center border-t border-[#eadfce] pt-3">
+            <span className="text-[#394842] font-medium">お支払合計</span>
+            <span className="text-2xl font-black text-[#0b806b]">
+              ¥{formatPrice(adjustedTotal)}
+            </span>
+          </div>
+        )}
         {!hasAnySelection && (
           <p className="text-xs text-[#88928d] mt-2">数量を入力してください</p>
         )}
@@ -430,14 +596,21 @@ function Step1Products({
 
 function Step2Cart({
   lines,
+  selfInstall,
   onBack,
   onNext,
 }: {
   lines: OrderLineItem[];
+  selfInstall: boolean;
   onBack: () => void;
   onNext: () => void;
 }) {
-  const total = calcLinesTotal(lines);
+  const subtotal = calcLinesTotal(lines);
+  const { totalDiscount } = calcInstallationDiscount(
+    lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+    selfInstall,
+  );
+  const total = subtotal - totalDiscount;
 
   return (
     <section aria-labelledby="step2-cart-heading">
@@ -472,7 +645,21 @@ function Step2Cart({
       </div>
 
       <div className="mt-5 rounded-xl border border-[#eadfce] bg-[#fbf7ef] p-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 text-sm">
+          <span className="text-[#394842]">小計（税込）</span>
+          <span className="font-mono text-[#26322f]">
+            ¥{formatPrice(subtotal)}
+          </span>
+        </div>
+        {totalDiscount > 0 && (
+          <div className="mt-2 flex items-center justify-between gap-4 text-sm">
+            <span className="text-[#b58a36]">取付サービス割引</span>
+            <span className="font-mono text-[#b58a36]">
+              -¥{formatPrice(totalDiscount)}
+            </span>
+          </div>
+        )}
+        <div className="mt-3 flex items-center justify-between gap-4 border-t border-[#eadfce] pt-3">
           <span className="font-bold text-[#26322f]">合計（税込）</span>
           <span className="text-2xl font-black text-[#0b806b]">
             ¥{formatPrice(total)}
@@ -504,30 +691,51 @@ function Step2Cart({
 
 function Step2Customer({
   customer,
-  onChange,
+  installation,
+  needsDesiredDates,
+  onCustomerChange,
+  onInstallationChange,
   onBack,
   onNext,
 }: {
   customer: CustomerInfo;
-  onChange: (field: keyof CustomerInfo, value: string | boolean) => void;
+  installation: InstallationOptions;
+  needsDesiredDates: boolean;
+  onCustomerChange: (field: keyof CustomerInfo, value: string | boolean) => void;
+  onInstallationChange: (
+    field: keyof InstallationOptions,
+    value: string | boolean,
+  ) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
-  const [errors, setErrors] = useState<Partial<Record<keyof CustomerInfo, string>>>({});
+  type CustomerErrorKey =
+    | keyof CustomerInfo
+    | "desiredDate1"
+    | "desiredDate2"
+    | "desiredDate3";
 
-  const requiredFields: (keyof CustomerInfo)[] = [
+  const [errors, setErrors] = useState<Partial<Record<CustomerErrorKey, string>>>(
+    {},
+  );
+
+  const requiredCustomerFields: (keyof CustomerInfo)[] = [
     "name",
     "postalCode",
-    "address",
+    "prefecture",
+    "addressDetail",
     "phone",
     "email",
     "machineMaker",
     "machineModel",
   ];
 
+  const minDesiredDate = tomorrowJstISO();
+  const maxDesiredDate = maxDesiredDateISO();
+
   const validate = (): boolean => {
-    const newErrors: Partial<Record<keyof CustomerInfo, string>> = {};
-    for (const field of requiredFields) {
+    const newErrors: Partial<Record<CustomerErrorKey, string>> = {};
+    for (const field of requiredCustomerFields) {
       const val = customer[field];
       if (typeof val === "string" && !val.trim()) {
         newErrors[field] = "入力してください";
@@ -539,6 +747,31 @@ function Step2Customer({
     if (customer.postalCode && !/^\d{3}-?\d{4}$/.test(customer.postalCode)) {
       newErrors.postalCode = "ハイフンあり・なし両方可 (例: 123-4567)";
     }
+    if (
+      customer.prefecture &&
+      !AVAILABLE_PREFECTURES.includes(customer.prefecture)
+    ) {
+      newErrors.prefecture =
+        "現在は北海道のみ販売しております。本州・四国・九州への展開は順次拡大予定です。";
+    }
+    if (needsDesiredDates) {
+      if (!installation.desiredDate1.trim()) {
+        newErrors.desiredDate1 = "第1希望日は必須です";
+      }
+      for (const key of [
+        "desiredDate1",
+        "desiredDate2",
+        "desiredDate3",
+      ] as const) {
+        const val = installation[key];
+        if (val && val < minDesiredDate) {
+          newErrors[key] = "翌日以降の日付を選択してください";
+        }
+        if (val && val > maxDesiredDate) {
+          newErrors[key] = "90日以内の日付を選択してください";
+        }
+      }
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -547,7 +780,7 @@ function Step2Customer({
     if (validate()) onNext();
   };
 
-  const fieldClass = (field: keyof CustomerInfo) =>
+  const fieldClass = (field: CustomerErrorKey) =>
     [
       "w-full px-4 py-2.5 rounded-lg bg-white border text-[#26322f] placeholder-[#9aa39f] transition-colors focus:outline-none focus:ring-2 focus:ring-[#0b806b]/30",
       errors[field] ? "border-rose-500" : "border-[#d8c9aa] focus:border-[#0b806b]",
@@ -573,7 +806,7 @@ function Step2Customer({
             type="text"
             autoComplete="name"
             value={customer.name}
-            onChange={(e) => onChange("name", e.target.value)}
+            onChange={(e) => onCustomerChange("name", e.target.value)}
             placeholder="山田 太郎"
             className={fieldClass("name")}
             aria-required="true"
@@ -597,7 +830,7 @@ function Step2Customer({
             type="text"
             autoComplete="postal-code"
             value={customer.postalCode}
-            onChange={(e) => onChange("postalCode", e.target.value)}
+            onChange={(e) => onCustomerChange("postalCode", e.target.value)}
             placeholder="123-4567"
             className={`${fieldClass("postalCode")} max-w-xs`}
             aria-required="true"
@@ -610,26 +843,61 @@ function Step2Customer({
           )}
         </div>
 
-        {/* 住所 */}
+        {/* 都道府県 */}
         <div>
-          <label htmlFor="address" className={labelClass}>
-            住所
+          <label htmlFor="prefecture" className={labelClass}>
+            都道府県
+            <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+          </label>
+          <select
+            id="prefecture"
+            value={customer.prefecture}
+            onChange={(e) => onCustomerChange("prefecture", e.target.value)}
+            className={`${fieldClass("prefecture")} max-w-xs`}
+            aria-required="true"
+            aria-describedby={errors.prefecture ? "prefecture-error" : undefined}
+          >
+            <option value="">選択してください</option>
+            {JAPANESE_PREFECTURES.map((pref) => (
+              <option key={pref} value={pref}>
+                {pref}
+              </option>
+            ))}
+          </select>
+          {errors.prefecture && (
+            <p
+              id="prefecture-error"
+              className="mt-1 text-xs text-rose-400"
+              role="alert"
+            >
+              {errors.prefecture}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-[#88928d]">
+            現在は北海道のみ販売しております。本州・四国・九州への展開は順次拡大予定です。
+          </p>
+        </div>
+
+        {/* 市町村以下の住所 */}
+        <div>
+          <label htmlFor="addressDetail" className={labelClass}>
+            市町村以下の住所
             <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
           </label>
           <input
-            id="address"
+            id="addressDetail"
             type="text"
-            autoComplete="street-address"
-            value={customer.address}
-            onChange={(e) => onChange("address", e.target.value)}
-            placeholder="東京都渋谷区〇〇 1-2-3"
-            className={fieldClass("address")}
+            autoComplete="address-line1"
+            value={customer.addressDetail}
+            onChange={(e) => onCustomerChange("addressDetail", e.target.value)}
+            placeholder="札幌市豊平区福住一条7丁目4-13"
+            className={fieldClass("addressDetail")}
             aria-required="true"
-            aria-describedby={errors.address ? "address-error" : undefined}
+            aria-describedby={errors.addressDetail ? "addressDetail-error" : undefined}
           />
-          {errors.address && (
-            <p id="address-error" className="mt-1 text-xs text-rose-400" role="alert">
-              {errors.address}
+          {errors.addressDetail && (
+            <p id="addressDetail-error" className="mt-1 text-xs text-rose-400" role="alert">
+              {errors.addressDetail}
             </p>
           )}
         </div>
@@ -645,7 +913,7 @@ function Step2Customer({
             type="tel"
             autoComplete="tel"
             value={customer.phone}
-            onChange={(e) => onChange("phone", e.target.value)}
+            onChange={(e) => onCustomerChange("phone", e.target.value)}
             placeholder="090-1234-5678"
             className={`${fieldClass("phone")} max-w-xs`}
             aria-required="true"
@@ -669,7 +937,7 @@ function Step2Customer({
             type="email"
             autoComplete="email"
             value={customer.email}
-            onChange={(e) => onChange("email", e.target.value)}
+            onChange={(e) => onCustomerChange("email", e.target.value)}
             placeholder="example@example.com"
             className={fieldClass("email")}
             aria-required="true"
@@ -692,7 +960,7 @@ function Step2Customer({
             id="machineMaker"
             type="text"
             value={customer.machineMaker}
-            onChange={(e) => onChange("machineMaker", e.target.value)}
+            onChange={(e) => onCustomerChange("machineMaker", e.target.value)}
             placeholder="クボタ、ヤンマー、イセキ など"
             className={fieldClass("machineMaker")}
             aria-required="true"
@@ -715,7 +983,7 @@ function Step2Customer({
             id="machineModel"
             type="text"
             value={customer.machineModel}
-            onChange={(e) => onChange("machineModel", e.target.value)}
+            onChange={(e) => onCustomerChange("machineModel", e.target.value)}
             placeholder="NW8SQZAT など"
             className={fieldClass("machineModel")}
             aria-required="true"
@@ -728,6 +996,62 @@ function Step2Customer({
           )}
         </div>
 
+        {/* 取付サービス利用時のみ表示: 希望日 */}
+        {needsDesiredDates && (
+          <fieldset className="rounded-xl border border-[#eadfce] bg-[#fbf7ef] p-5">
+            <legend className="px-2 text-sm font-semibold text-[#394842]">
+              取付ご希望日
+              <span className="text-xs text-[#88928d] font-normal ml-2">
+                第1希望は必須・第2/第3は任意
+              </span>
+            </legend>
+            <p className="mt-2 text-xs leading-relaxed text-[#607069]">
+              ご希望日を最大3つまでお選びください。順次調整の上、確定日をご連絡します。
+              翌日以降〜90日先まで選択できます。
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              {(
+                [
+                  { key: "desiredDate1", label: "第1希望", required: true },
+                  { key: "desiredDate2", label: "第2希望", required: false },
+                  { key: "desiredDate3", label: "第3希望", required: false },
+                ] as const
+              ).map(({ key, label, required }) => (
+                <div key={key}>
+                  <label htmlFor={key} className={labelClass}>
+                    {label}
+                    {required && (
+                      <span className="text-rose-400 ml-1" aria-hidden="true">
+                        *
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    id={key}
+                    type="date"
+                    min={minDesiredDate}
+                    max={maxDesiredDate}
+                    value={installation[key]}
+                    onChange={(e) => onInstallationChange(key, e.target.value)}
+                    className={fieldClass(key)}
+                    aria-required={required ? "true" : undefined}
+                    aria-describedby={errors[key] ? `${key}-error` : undefined}
+                  />
+                  {errors[key] && (
+                    <p
+                      id={`${key}-error`}
+                      className="mt-1 text-xs text-rose-400"
+                      role="alert"
+                    >
+                      {errors[key]}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
         {/* 備考 */}
         <div>
           <label htmlFor="notes" className={labelClass}>
@@ -738,7 +1062,7 @@ function Step2Customer({
             id="notes"
             rows={4}
             value={customer.notes}
-            onChange={(e) => onChange("notes", e.target.value)}
+            onChange={(e) => onCustomerChange("notes", e.target.value)}
             placeholder="ご質問・ご要望があればご記入ください"
             className="w-full px-4 py-2.5 rounded-lg bg-white border border-[#d8c9aa] text-[#26322f] placeholder-[#9aa39f] transition-colors focus:outline-none focus:ring-2 focus:ring-[#0b806b]/30 focus:border-[#0b806b] resize-y"
           />
@@ -923,6 +1247,7 @@ function Step3Agreement({
 function Step4Confirm({
   lines,
   customer,
+  installation,
   onBack,
   onSubmit,
   isSubmitting,
@@ -930,12 +1255,22 @@ function Step4Confirm({
 }: {
   lines: OrderLineItem[];
   customer: CustomerInfo;
+  installation: InstallationOptions;
   onBack: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
   submitError: string | null;
 }) {
-  const total = calcLinesTotal(lines);
+  const subtotal = calcLinesTotal(lines);
+  const { totalDiscount } = calcInstallationDiscount(
+    lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+    installation.selfInstall,
+  );
+  const total = subtotal - totalDiscount;
+
+  const installationEligible = lines.some((l) =>
+    hasInstallationService(l.product.id),
+  );
 
   const dlItemClass = "flex justify-between items-start gap-4 py-2";
   const dtClass = "text-sm text-[#607069] shrink-0";
@@ -975,13 +1310,64 @@ function Step4Confirm({
             </li>
           ))}
         </ul>
-        <div className="mt-4 pt-4 border-t border-[#eadfce] flex justify-between items-center">
-          <span className="font-bold text-[#26322f]">合計（税込）</span>
-          <span className="text-2xl font-black text-[#0b806b]">
-            ¥{formatPrice(total)}
-          </span>
+        <div className="mt-4 pt-4 border-t border-[#eadfce] space-y-2">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-[#607069]">小計（税込）</span>
+            <span className="font-mono text-[#26322f]">¥{formatPrice(subtotal)}</span>
+          </div>
+          {totalDiscount > 0 && (
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-[#b58a36]">取付サービス割引</span>
+              <span className="font-mono text-[#b58a36]">
+                -¥{formatPrice(totalDiscount)}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center border-t border-[#eadfce] pt-3">
+            <span className="font-bold text-[#26322f]">合計（税込）</span>
+            <span className="text-2xl font-black text-[#0b806b]">
+              ¥{formatPrice(total)}
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* 取付サービス情報 */}
+      {installationEligible && (
+        <div className="rounded-xl border border-[#eadfce] bg-white p-5 mb-6">
+          <h3 className="text-sm font-semibold text-[#394842] mb-4 pb-3 border-b border-[#eadfce]">
+            取付サービス
+          </h3>
+          {installation.selfInstall ? (
+            <p className="text-sm text-[#607069]">
+              取付サービスは利用しません（自分で取付）。ブラケット型番は別途お問い合わせください。
+            </p>
+          ) : (
+            <dl className="divide-y divide-[#eadfce]">
+              <div className={dlItemClass}>
+                <dt className={dtClass}>取付サービス</dt>
+                <dd className={ddClass}>利用する（取付込み価格）</dd>
+              </div>
+              <div className={dlItemClass}>
+                <dt className={dtClass}>第1希望</dt>
+                <dd className={ddClass}>{installation.desiredDate1 || "—"}</dd>
+              </div>
+              {installation.desiredDate2 && (
+                <div className={dlItemClass}>
+                  <dt className={dtClass}>第2希望</dt>
+                  <dd className={ddClass}>{installation.desiredDate2}</dd>
+                </div>
+              )}
+              {installation.desiredDate3 && (
+                <div className={dlItemClass}>
+                  <dt className={dtClass}>第3希望</dt>
+                  <dd className={ddClass}>{installation.desiredDate3}</dd>
+                </div>
+              )}
+            </dl>
+          )}
+        </div>
+      )}
 
       {/* お客様情報 */}
       <div className="rounded-xl border border-[#eadfce] bg-white p-5 mb-8">
@@ -999,7 +1385,9 @@ function Step4Confirm({
           </div>
           <div className={dlItemClass}>
             <dt className={dtClass}>住所</dt>
-            <dd className={`${ddClass} max-w-xs`}>{customer.address}</dd>
+            <dd className={`${ddClass} max-w-xs`}>
+              {customer.prefecture} {customer.addressDetail}
+            </dd>
           </div>
           <div className={dlItemClass}>
             <dt className={dtClass}>電話番号</dt>
@@ -1097,10 +1485,15 @@ export default function OrderForm() {
   const [step, setStep] = useState(1);
   const [quantities, setQuantities] = useState<ProductQuantities>({});
   const [customer, setCustomer] = useState<CustomerInfo>(EMPTY_CUSTOMER);
+  const [installation, setInstallation] = useState<InstallationOptions>(
+    EMPTY_INSTALLATION,
+  );
   const [agreement, setAgreement] = useState<AgreementState>(EMPTY_AGREEMENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const lines = buildOrderLines(quantities);
+  const installationEligible = hasInstallationEligibleLine(lines);
+  const needsDesiredDates = installationEligible && !installation.selfInstall;
 
   const handleQuantityChange = (id: ProductId, quantity: number) => {
     const normalized = clampQuantity(quantity);
@@ -1117,9 +1510,26 @@ export default function OrderForm() {
 
   const handleCustomerChange = (
     field: keyof CustomerInfo,
-    value: string | boolean
+    value: string | boolean,
   ) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleInstallationChange = (
+    field: keyof InstallationOptions,
+    value: string | boolean,
+  ) => {
+    setInstallation((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSelfInstallToggle = (next: boolean) => {
+    setInstallation((prev) => ({
+      ...prev,
+      selfInstall: next,
+      ...(next
+        ? { desiredDate1: "", desiredDate2: "", desiredDate3: "" }
+        : {}),
+    }));
   };
 
   const handleAgreementToggle = (key: keyof AgreementState) => {
@@ -1133,7 +1543,11 @@ export default function OrderForm() {
       return;
     }
 
-    const total = calcLinesTotal(lines);
+    const { totalDiscount } = calcInstallationDiscount(
+      lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+      installation.selfInstall,
+    );
+    const total = calcLinesTotal(lines) - totalDiscount;
     const confirmed = window.confirm(
       [
         "この内容で注文手続きへ進みますか？",
@@ -1142,12 +1556,26 @@ export default function OrderForm() {
           (line) =>
             `・${line.product.name}: ¥${formatPrice(line.unitPriceIncTax)} x ${line.quantity} = ¥${formatPrice(line.lineTotalIncTax)}`,
         ),
+        ...(totalDiscount > 0
+          ? [`・取付サービス割引: -¥${formatPrice(totalDiscount)}`]
+          : []),
         "",
         `合計(税込): ¥${formatPrice(total)}`,
         `お名前: ${customer.name}`,
         `メール: ${customer.email}`,
         `電話: ${customer.phone}`,
-        `配送先: ${customer.postalCode} ${customer.address}`,
+        `配送先: ${customer.postalCode} ${customer.prefecture} ${customer.addressDetail}`,
+        ...(needsDesiredDates
+          ? [
+              `取付ご希望日: ${installation.desiredDate1}` +
+                (installation.desiredDate2
+                  ? ` / ${installation.desiredDate2}`
+                  : "") +
+                (installation.desiredDate3
+                  ? ` / ${installation.desiredDate3}`
+                  : ""),
+            ]
+          : []),
         "",
         "OKを押すと決済画面へ進みます。",
       ].join("\n"),
@@ -1167,6 +1595,7 @@ export default function OrderForm() {
             quantity: line.quantity,
           })),
           customer,
+          installation,
           requestInvoice: true,
         }),
       });
@@ -1199,12 +1628,15 @@ export default function OrderForm() {
           <Step1Products
             quantities={quantities}
             onQuantityChange={handleQuantityChange}
+            selfInstall={installation.selfInstall}
+            onSelfInstallToggle={handleSelfInstallToggle}
             onNext={() => setStep(2)}
           />
         )}
         {step === 2 && (
           <Step2Cart
             lines={lines}
+            selfInstall={installation.selfInstall}
             onBack={() => setStep(1)}
             onNext={() => setStep(3)}
           />
@@ -1212,7 +1644,10 @@ export default function OrderForm() {
         {step === 3 && (
           <Step2Customer
             customer={customer}
-            onChange={handleCustomerChange}
+            installation={installation}
+            needsDesiredDates={needsDesiredDates}
+            onCustomerChange={handleCustomerChange}
+            onInstallationChange={handleInstallationChange}
             onBack={() => setStep(2)}
             onNext={() => setStep(4)}
           />
@@ -1229,6 +1664,7 @@ export default function OrderForm() {
           <Step4Confirm
             lines={lines}
             customer={customer}
+            installation={installation}
             onBack={() => setStep(4)}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
@@ -1239,4 +1675,3 @@ export default function OrderForm() {
     </div>
   );
 }
-

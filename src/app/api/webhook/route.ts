@@ -5,7 +5,8 @@ import { google } from "googleapis";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!;
-const SHEET_NAME = "Web注文";
+const WEB_ORDERS_SHEET = "Web注文";
+const PENDING_MODELS_SHEET = "機種保留マスタ";
 
 async function getGoogleSheetsClient() {
   const credentials = JSON.parse(
@@ -35,7 +36,7 @@ async function getNextSerialNumber(
 ): Promise<number> {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A2:A`,
+    range: `${WEB_ORDERS_SHEET}!A2:A`,
   });
   const values = res.data.values ?? [];
   let maxSerial = 0;
@@ -73,6 +74,12 @@ function paymentDueLabel(session: Stripe.Checkout.Session): string {
   return "";
 }
 
+function selfInstallLabel(metadata: Record<string, string>): string {
+  if (metadata.selfInstall === "true") return "取付なし(自分で取付)";
+  if (metadata.selfInstall === "false") return "取付サービス利用";
+  return "";
+}
+
 function buildSheetRow(
   session: Stripe.Checkout.Session,
   serialNumber: number
@@ -107,7 +114,71 @@ function buildSheetRow(
     requestInvoice ? "希望" : "",
     metadata.partnerId ?? "",
     paymentDueLabel(session),
+    // V3 追加列(T〜Z)
+    metadata.customerPrefecture ?? "",
+    selfInstallLabel(metadata),
+    metadata.desiredDate1 ?? "",
+    metadata.desiredDate2 ?? "",
+    metadata.desiredDate3 ?? "",
+    "", // 取付完了日（管理画面で手動入力）
+    "", // 返送伝票番号（管理画面で手動入力）
   ];
+}
+
+async function upsertPendingModel(
+  sheets: ReturnType<typeof google.sheets>,
+  maker: string,
+  model: string,
+  sessionId: string
+): Promise<void> {
+  const trimmedMaker = maker.trim();
+  const trimmedModel = model.trim();
+  if (!trimmedMaker && !trimmedModel) return;
+
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${PENDING_MODELS_SHEET}!A2:E`,
+    });
+    const values = res.data.values ?? [];
+    const idx = values.findIndex(
+      (row) => row[0] === trimmedMaker && row[1] === trimmedModel
+    );
+    if (idx >= 0) {
+      const rowNumber = idx + 2;
+      const existingCount = Number(values[idx][3]) || 0;
+      const existingSessions = String(values[idx][4] ?? "");
+      const newSessions = existingSessions
+        ? `${existingSessions},${sessionId}`
+        : sessionId;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${PENDING_MODELS_SHEET}!D${rowNumber}:E${rowNumber}`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [[existingCount + 1, newSessions]] },
+      });
+    } else {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${PENDING_MODELS_SHEET}!A:E`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: [
+            [
+              trimmedMaker,
+              trimmedModel,
+              toJstDateString(new Date()),
+              1,
+              sessionId,
+            ],
+          ],
+        },
+      });
+    }
+  } catch (err) {
+    // 機種保留マスタの書き込み失敗は注文処理を止めない
+    console.error("Failed to upsert pending model:", err);
+  }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -150,7 +221,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${SHEET_NAME}!A:S`,
+        range: `${WEB_ORDERS_SHEET}!A:Z`,
         valueInputOption: "USER_ENTERED",
         requestBody: {
           values: [row],
@@ -159,6 +230,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.log(
         `Order written to Sheets: serial=${serialNumber} session=${session.id} (${event.type})`
       );
+
+      // 機種保留マスタへの蓄積(retail 注文のみ)
+      const metadata = session.metadata ?? {};
+      if (metadata.priceTier === "retail" || !metadata.priceTier) {
+        await upsertPendingModel(
+          sheets,
+          metadata.machineMaker ?? "",
+          metadata.machineModel ?? "",
+          session.id
+        );
+      }
     } catch (err) {
       console.error("Failed to write to Google Sheets:", err);
     }
