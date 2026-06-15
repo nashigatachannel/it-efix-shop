@@ -95,7 +95,7 @@ export default function HomePage() {
                 href="/order"
                 className="rounded-lg bg-[#c49a45] px-4 py-2 text-sm font-bold text-white shadow-[0_12px_30px_rgba(196,154,69,0.28)] transition hover:bg-[#af8737] sm:px-5"
               >
-                注文する
+                注文
               </Link>
             </div>
           </header>
