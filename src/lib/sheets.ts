@@ -93,6 +93,22 @@ export interface WholesaleOrderRow {
   updatedAt: string;
 }
 
+export interface WholesaleOrderDetailRow {
+  orderId: string;
+  lineNo: number | null;
+  kind: string;
+  model: string;
+  section: string;
+  category: string;
+  partNumber: string;
+  productName: string;
+  quantity: number | null;
+  unitPriceExTax: number | null;
+  subtotalExTax: number | null;
+  stockAllocationStatus: string;
+  deliveryStatus: string;
+}
+
 function toNumberOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -162,6 +178,24 @@ function parseWholesaleRow(row: unknown[]): WholesaleOrderRow {
   };
 }
 
+function parseWholesaleDetailRow(row: unknown[]): WholesaleOrderDetailRow {
+  return {
+    orderId: String(row[0] ?? ""),
+    lineNo: toNumberOrNull(row[1]),
+    kind: String(row[2] ?? ""),
+    model: String(row[3] ?? ""),
+    section: String(row[4] ?? ""),
+    category: String(row[5] ?? ""),
+    partNumber: String(row[6] ?? ""),
+    productName: String(row[7] ?? ""),
+    quantity: toNumberOrNull(row[8]),
+    unitPriceExTax: toNumberOrNull(row[9]),
+    subtotalExTax: toNumberOrNull(row[10]),
+    stockAllocationStatus: String(row[11] ?? ""),
+    deliveryStatus: String(row[12] ?? ""),
+  };
+}
+
 export async function fetchWebOrders(): Promise<WebOrderRow[]> {
   if (!SPREADSHEET_ID) return [];
   const sheets = getSheetsClient();
@@ -190,4 +224,46 @@ export async function fetchWholesaleOrders(): Promise<WholesaleOrderRow[]> {
     range: sheetRange(WHOLESALE_ORDERS_SHEET, "A2:AA"),
   });
   return (res.data.values ?? []).map(parseWholesaleRow);
+}
+
+export async function fetchPartnerWholesaleOrders(
+  partnerId: string,
+): Promise<WholesaleOrderRow[]> {
+  if (!partnerId) return [];
+  const all = await fetchWholesaleOrders();
+  return all.filter((row) => row.partnerId === partnerId);
+}
+
+export async function fetchWholesaleOrderDetails(
+  orderId: string,
+): Promise<WholesaleOrderDetailRow[]> {
+  if (
+    !WHOLESALE_SPREADSHEET_ID ||
+    !process.env.GOOGLE_SERVICE_ACCOUNT_KEY ||
+    !orderId
+  ) {
+    return [];
+  }
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: WHOLESALE_SPREADSHEET_ID,
+    range: sheetRange(WHOLESALE_ORDER_DETAILS_SHEET, "A2:M"),
+  });
+  return (res.data.values ?? [])
+    .map(parseWholesaleDetailRow)
+    .filter((row) => row.orderId === orderId);
+}
+
+export async function fetchPartnerWholesaleOrderWithDetails(
+  partnerId: string,
+  orderId: string,
+): Promise<{
+  order: WholesaleOrderRow;
+  details: WholesaleOrderDetailRow[];
+} | null> {
+  const orders = await fetchPartnerWholesaleOrders(partnerId);
+  const order = orders.find((row) => row.orderId === orderId);
+  if (!order) return null;
+  const details = await fetchWholesaleOrderDetails(orderId);
+  return { order, details };
 }
