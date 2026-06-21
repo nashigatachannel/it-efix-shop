@@ -7,7 +7,17 @@ import LogoutButton from "./LogoutButton";
 type NavItem = {
   href: string;
   label: string;
-  icon: "grid" | "cart" | "box" | "globe" | "tag" | "user" | "stack" | "settings" | "file";
+  icon:
+    | "grid"
+    | "cart"
+    | "calendar"
+    | "box"
+    | "globe"
+    | "tag"
+    | "user"
+    | "stack"
+    | "settings"
+    | "file";
   match?: string[];
 };
 
@@ -17,7 +27,13 @@ const topNavItems: NavItem[] = [
     href: "/admin/web-orders",
     label: "Web注文",
     icon: "cart",
-    match: ["/admin/web-orders", "/admin/installations"],
+    match: ["/admin/web-orders"],
+  },
+  {
+    href: "/admin/installations",
+    label: "取付予約",
+    icon: "calendar",
+    match: ["/admin/installations"],
   },
   {
     href: "/admin/wholesale",
@@ -54,7 +70,13 @@ const sideNavItems: NavItem[] = [
     href: "/admin/web-orders",
     label: "注文管理（Web）",
     icon: "cart",
-    match: ["/admin/web-orders", "/admin/installations"],
+    match: ["/admin/web-orders"],
+  },
+  {
+    href: "/admin/installations",
+    label: "取付予約",
+    icon: "calendar",
+    match: ["/admin/installations"],
   },
   {
     href: "/admin/wholesale",
@@ -108,6 +130,21 @@ function AdminIcon({ name, className = "" }: { name: NavItem["icon"]; className?
         <path d="M6 6h15l-2 8H8L6 3H3" />
         <path d="M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
         <path d="M18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+      </svg>
+    );
+  }
+  if (name === "calendar") {
+    return (
+      <svg {...common}>
+        <path d="M8 3v4" />
+        <path d="M16 3v4" />
+        <path d="M4 9h16" />
+        <path d="M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" />
+        <path d="M8 13h.01" />
+        <path d="M12 13h.01" />
+        <path d="M16 13h.01" />
+        <path d="M8 17h.01" />
+        <path d="M12 17h.01" />
       </svg>
     );
   }

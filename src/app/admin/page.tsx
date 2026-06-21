@@ -36,7 +36,7 @@ const menuItems: AdminMenuItem[] = [
   },
   {
     title: "Web販売の取付日程管理",
-    subtitle: "取付希望日、確定日、返送状況を管理します。",
+    subtitle: "カレンダーで希望日と確定日を見ながら、業者打診、確定、完了まで管理します。",
     href: "/admin/installations",
     status: "ready",
     accent: "green",
