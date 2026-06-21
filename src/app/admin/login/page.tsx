@@ -77,15 +77,16 @@ function LoginForm() {
             htmlFor="email"
             className="block text-xs font-semibold text-slate-300 mb-1"
           >
-            メールアドレス
+            管理者ID
           </label>
           <input
             id="email"
-            type="email"
+            type="text"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="username"
+            placeholder="admin"
             className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
           />
         </div>
