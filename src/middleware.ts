@@ -44,7 +44,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (pathname.startsWith("/admin/login") || pathname === "/api/admin/login") {
+  const isAdminLoginApi =
+    pathname === "/api/admin/login" ||
+    (process.env.NODE_ENV !== "production" &&
+      pathname === "/api/admin/dev-login");
+
+  if (pathname.startsWith("/admin/login") || isAdminLoginApi) {
     return NextResponse.next();
   }
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {

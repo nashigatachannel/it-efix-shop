@@ -2,12 +2,18 @@ import type { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import OrderForm from "@/components/OrderForm";
+import { fetchWebOrderProductGroups } from "@/lib/web-catalog";
 
 export const metadata: Metadata = {
   title: "ご注文 | E-FIX",
 };
 
-export default function OrderPage() {
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export default async function OrderPage() {
+  const productGroups = await fetchWebOrderProductGroups();
+
   return (
     <>
       <Header />
@@ -24,7 +30,7 @@ export default function OrderPage() {
             支払いはStripeで、カード決済と銀行振込に対応しています。
           </p>
           <div className="mt-10">
-            <OrderForm />
+            <OrderForm {...productGroups} />
           </div>
         </div>
       </main>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -82,11 +82,6 @@ const EMPTY_AGREEMENT: AgreementState = {
 };
 
 const MAX_QUANTITY = 99;
-const ORDER_PRODUCTS: Product[] = [
-  ...MAIN_PRODUCTS,
-  ...OPTION_PRODUCTS,
-  ...DONATION_PRODUCTS,
-];
 
 // 47都道府県（北海道を先頭に）。注文可能な都道府県は AVAILABLE_PREFECTURES で制御。
 const JAPANESE_PREFECTURES = [
@@ -103,18 +98,34 @@ const JAPANESE_PREFECTURES = [
 ] as const;
 const AVAILABLE_PREFECTURES: readonly string[] = ["北海道"];
 
-function clampQuantity(value: number): number {
+function clampQuantity(value: number, maxQuantity = MAX_QUANTITY): number {
   if (!Number.isFinite(value) || value < 0) return 0;
-  return Math.min(MAX_QUANTITY, Math.floor(value));
+  return Math.min(maxQuantity, Math.floor(value));
 }
 
-function getQuantity(quantities: ProductQuantities, id: ProductId): number {
-  return clampQuantity(quantities[id] ?? 0);
+function getMaxQuantity(product: Product): number {
+  if (
+    typeof product.webAvailableQuantity === "number" &&
+    Number.isFinite(product.webAvailableQuantity)
+  ) {
+    return Math.max(0, Math.min(MAX_QUANTITY, Math.floor(product.webAvailableQuantity)));
+  }
+  return MAX_QUANTITY;
 }
 
-function buildOrderLines(quantities: ProductQuantities): OrderLineItem[] {
-  return ORDER_PRODUCTS.map((product) => {
-    const quantity = getQuantity(quantities, product.id);
+function getQuantity(
+  quantities: ProductQuantities,
+  product: Product,
+): number {
+  return clampQuantity(quantities[product.id] ?? 0, getMaxQuantity(product));
+}
+
+function buildOrderLines(
+  products: Product[],
+  quantities: ProductQuantities,
+): OrderLineItem[] {
+  return products.map((product) => {
+    const quantity = getQuantity(quantities, product);
     const unitPriceIncTax = calcTaxIncluded(product.priceExTax);
     return {
       product,
@@ -261,10 +272,12 @@ function ProductVisual({
 function QuantityControl({
   productId,
   quantity,
+  maxQuantity,
   onChange,
 }: {
   productId: ProductId;
   quantity: number;
+  maxQuantity: number;
   onChange: (id: ProductId, quantity: number) => void;
 }) {
   const inputId = `qty-${productId}`;
@@ -288,7 +301,7 @@ function QuantityControl({
         type="number"
         inputMode="numeric"
         min={0}
-        max={MAX_QUANTITY}
+        max={maxQuantity}
         value={quantity}
         onChange={(e) => onChange(productId, Number(e.target.value))}
         onBlur={(e) => onChange(productId, Number(e.target.value))}
@@ -297,7 +310,7 @@ function QuantityControl({
       <button
         type="button"
         onClick={() => onChange(productId, quantity + 1)}
-        disabled={quantity >= MAX_QUANTITY}
+        disabled={quantity >= maxQuantity}
         className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#d8c9aa] bg-white text-lg font-black text-[#394842] transition-colors hover:border-[#c49a45] disabled:cursor-not-allowed disabled:opacity-35"
         aria-label="数量を増やす"
       >
@@ -320,6 +333,7 @@ function ProductQuantityCard({
 }) {
   const isSelected = quantity > 0;
   const unitPriceIncTax = calcTaxIncluded(product.priceExTax);
+  const maxQuantity = getMaxQuantity(product);
   const installationFee = hasInstallationService(product.id)
     ? getInstallationFeeIncTax(product.id)
     : 0;
@@ -348,6 +362,11 @@ function ProductQuantityCard({
               ¥{formatPrice(unitPriceIncTax)}
             </p>
             <p className="text-xs text-[#88928d]">税込 / 1点</p>
+            {maxQuantity < MAX_QUANTITY && (
+              <p className="mt-1 text-[10px] font-bold text-[#b58a36]">
+                残り {maxQuantity}
+              </p>
+            )}
             {installationFee > 0 && (
               <p className="mt-1 text-[10px] text-[#88928d]">
                 取付サービス込み
@@ -371,6 +390,7 @@ function ProductQuantityCard({
           <QuantityControl
             productId={product.id}
             quantity={quantity}
+            maxQuantity={maxQuantity}
             onChange={onQuantityChange}
           />
           {quantity > 0 && (
@@ -458,19 +478,26 @@ function InstallationOptOutCard({
 }
 
 function Step1Products({
+  mainProducts,
+  optionProducts,
+  donationProducts,
   quantities,
   onQuantityChange,
   selfInstall,
   onSelfInstallToggle,
   onNext,
 }: {
+  mainProducts: Product[];
+  optionProducts: Product[];
+  donationProducts: Product[];
   quantities: ProductQuantities;
   onQuantityChange: (id: ProductId, quantity: number) => void;
   selfInstall: boolean;
   onSelfInstallToggle: (next: boolean) => void;
   onNext: () => void;
 }) {
-  const lines = buildOrderLines(quantities);
+  const orderProducts = [...mainProducts, ...optionProducts, ...donationProducts];
+  const lines = buildOrderLines(orderProducts, quantities);
   const subtotal = calcLinesTotal(lines);
   const { totalDiscount } = calcInstallationDiscount(
     lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
@@ -492,11 +519,11 @@ function Step1Products({
           <span className="text-xs text-[#88928d] font-normal">任意</span>
         </legend>
         <div className="flex flex-col gap-3">
-          {MAIN_PRODUCTS.map((product) => (
+          {mainProducts.map((product) => (
             <ProductQuantityCard
               key={product.id}
               product={product}
-              quantity={getQuantity(quantities, product.id)}
+              quantity={getQuantity(quantities, product)}
               onQuantityChange={onQuantityChange}
               imageColumnClass="sm:grid-cols-[180px_1fr]"
             />
@@ -518,11 +545,11 @@ function Step1Products({
           <span className="text-xs text-[#88928d] font-normal ml-2">複数選択可</span>
         </legend>
         <div className="flex flex-col gap-3">
-          {OPTION_PRODUCTS.map((product) => (
+          {optionProducts.map((product) => (
             <ProductQuantityCard
               key={product.id}
               product={product}
-              quantity={getQuantity(quantities, product.id)}
+              quantity={getQuantity(quantities, product)}
               onQuantityChange={onQuantityChange}
               imageColumnClass="sm:grid-cols-[150px_1fr]"
             />
@@ -537,11 +564,11 @@ function Step1Products({
           <span className="text-xs text-[#88928d] font-normal ml-2">任意</span>
         </legend>
         <div className="flex flex-col gap-3">
-          {DONATION_PRODUCTS.map((product) => (
+          {donationProducts.map((product) => (
             <ProductQuantityCard
               key={product.id}
               product={product}
-              quantity={getQuantity(quantities, product.id)}
+              quantity={getQuantity(quantities, product)}
               onQuantityChange={onQuantityChange}
               imageColumnClass="sm:grid-cols-[150px_1fr]"
             />
@@ -1481,7 +1508,17 @@ function Step4Confirm({
 
 // --- メインコンポーネント ---
 
-export default function OrderForm() {
+interface OrderFormProps {
+  mainProducts?: Product[];
+  optionProducts?: Product[];
+  donationProducts?: Product[];
+}
+
+export default function OrderForm({
+  mainProducts = MAIN_PRODUCTS,
+  optionProducts = OPTION_PRODUCTS,
+  donationProducts = DONATION_PRODUCTS,
+}: OrderFormProps) {
   const [step, setStep] = useState(1);
   const [quantities, setQuantities] = useState<ProductQuantities>({});
   const [customer, setCustomer] = useState<CustomerInfo>(EMPTY_CUSTOMER);
@@ -1491,12 +1528,20 @@ export default function OrderForm() {
   const [agreement, setAgreement] = useState<AgreementState>(EMPTY_AGREEMENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const lines = buildOrderLines(quantities);
+  const orderProducts = useMemo(
+    () => [...mainProducts, ...optionProducts, ...donationProducts],
+    [mainProducts, optionProducts, donationProducts],
+  );
+  const lines = buildOrderLines(orderProducts, quantities);
   const installationEligible = hasInstallationEligibleLine(lines);
   const needsDesiredDates = installationEligible && !installation.selfInstall;
 
   const handleQuantityChange = (id: ProductId, quantity: number) => {
-    const normalized = clampQuantity(quantity);
+    const product = orderProducts.find((candidate) => candidate.id === id);
+    const normalized = clampQuantity(
+      quantity,
+      product ? getMaxQuantity(product) : MAX_QUANTITY,
+    );
     setQuantities((prev) => {
       const next = { ...prev };
       if (normalized > 0) {
@@ -1626,6 +1671,9 @@ export default function OrderForm() {
       <div className="rounded-lg border border-[#eadfce] bg-white p-5 shadow-[0_24px_70px_rgba(112,91,48,0.10)] sm:p-8">
         {step === 1 && (
           <Step1Products
+            mainProducts={mainProducts}
+            optionProducts={optionProducts}
+            donationProducts={donationProducts}
             quantities={quantities}
             onQuantityChange={handleQuantityChange}
             selfInstall={installation.selfInstall}

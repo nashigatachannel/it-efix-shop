@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    "/api/wholesale-orders": ["src/lib/assets/hotta-order-template.xlsx"],
+  },
+  serverExternalPackages: ["exceljs"],
 };
 
 export default nextConfig;

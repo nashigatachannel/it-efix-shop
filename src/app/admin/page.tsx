@@ -1,163 +1,155 @@
+import Link from "next/link";
 import { getCurrentAdmin } from "@/lib/admin-auth";
-import { fetchWebOrders, SPREADSHEET_ID, type WebOrderRow } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function formatYen(n: number | null): string {
-  if (n === null) return "—";
-  return `¥${n.toLocaleString("ja-JP")}`;
-}
+type AdminMenuItem = {
+  title: string;
+  subtitle: string;
+  href: string;
+  status: "ready" | "planned";
+  accent: "gold" | "green" | "gray";
+};
 
-function statusLabel(row: WebOrderRow): string {
-  if (row.paymentStatus === "paid") return "入金済";
-  if (row.paymentStatus === "unpaid") return "入金待ち";
-  if (row.paymentStatus === "payment_failed") return "支払い失敗";
-  if (row.paymentStatus === "expired") return "期限切れ";
-  if (row.paymentStatus === "canceled") return "キャンセル済み";
-  return row.paymentStatus || "—";
-}
+const menuItems: AdminMenuItem[] = [
+  {
+    title: "卸・特価卸の注文管理",
+    subtitle: "卸注文、特価卸注文、納品状態、請求状態を確認します。",
+    href: "/admin/wholesale",
+    status: "ready",
+    accent: "gold",
+  },
+  {
+    title: "堀田機工の注文履歴",
+    subtitle: "ブラケット注文、取付機種、備考、価格確認中の履歴を確認します。",
+    href: "/admin/hotta",
+    status: "ready",
+    accent: "gold",
+  },
+  {
+    title: "Web販売の注文管理",
+    subtitle: "Web販売の注文、入金状態、顧客情報を確認します。",
+    href: "/admin/web-orders",
+    status: "ready",
+    accent: "green",
+  },
+  {
+    title: "Web販売の取付日程管理",
+    subtitle: "取付希望日、確定日、返送状況を管理します。",
+    href: "/admin/installations",
+    status: "ready",
+    accent: "green",
+  },
+  {
+    title: "卸の価格・商品管理",
+    subtitle: "卸向けの商品、価格、表示可否を管理します。",
+    href: "/admin/catalog/wholesale",
+    status: "planned",
+    accent: "gray",
+  },
+  {
+    title: "特価卸の価格・商品管理",
+    subtitle: "特価卸向けの商品、特別価格、販売条件を管理します。",
+    href: "/admin/catalog/special-wholesale",
+    status: "planned",
+    accent: "gray",
+  },
+  {
+    title: "Web販売の価格・在庫管理",
+    subtitle: "販売価格、在庫数、台数限定、販売停止を管理します。",
+    href: "/admin/catalog/web",
+    status: "ready",
+    accent: "gold",
+  },
+];
 
-function statusBadgeClass(row: WebOrderRow): string {
-  if (row.paymentStatus === "paid") {
-    return "bg-emerald-900/40 text-emerald-300 border border-emerald-700/40";
-  }
-  if (row.paymentStatus === "unpaid") {
-    return "bg-amber-900/40 text-amber-300 border border-amber-700/40";
-  }
-  if (
-    row.paymentStatus === "payment_failed" ||
-    row.paymentStatus === "expired" ||
-    row.paymentStatus === "canceled"
-  ) {
-    return "bg-red-900/30 text-red-300 border border-red-700/40";
-  }
-  return "bg-slate-800 text-slate-300";
-}
-
-export default async function AdminDashboard() {
-  const admin = await getCurrentAdmin();
-
-  let orders: WebOrderRow[] = [];
-  let loadError: string | null = null;
-  if (!SPREADSHEET_ID) {
-    loadError = "GOOGLE_SPREADSHEET_ID が未設定です";
-  } else {
-    try {
-      orders = await fetchWebOrders();
-    } catch (err) {
-      loadError = err instanceof Error ? err.message : "Sheets読込エラー";
-    }
-  }
-
-  // 新しい順 (通し番号 desc, 注文日時 desc)
-  orders.sort((a, b) => {
-    const sa = a.serialNumber ?? 0;
-    const sb = b.serialNumber ?? 0;
-    if (sa !== sb) return sb - sa;
-    return b.orderedAt.localeCompare(a.orderedAt);
-  });
-
+function MenuIcon({ accent }: { accent: AdminMenuItem["accent"] }) {
+  const color =
+    accent === "gold" ? "text-[#c89518]" : accent === "green" ? "text-emerald-600" : "text-neutral-500";
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <div className="flex items-baseline justify-between mb-6">
-        <h1 className="text-2xl font-black text-white">注文管理（Web注文）</h1>
-        <p className="text-xs text-slate-500">
-          ログイン中: {admin?.email ?? "—"}
+    <svg
+      className={`h-10 w-10 ${color}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+    >
+      <path d="M4 4h7v7H4z" />
+      <path d="M13 4h7v7h-7z" />
+      <path d="M4 13h7v7H4z" />
+      <path d="M13 13h7v7h-7z" />
+    </svg>
+  );
+}
+
+function MenuCard({ item }: { item: AdminMenuItem }) {
+  const ready = item.status === "ready";
+  return (
+    <Link
+      href={item.href}
+      className="group flex min-h-[190px] flex-col justify-between rounded-lg border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[#d1a227] hover:shadow-md"
+    >
+      <div>
+        <div className="mb-5 flex items-center justify-between">
+          <MenuIcon accent={item.accent} />
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              ready
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-neutral-100 text-neutral-500"
+            }`}
+          >
+            {ready ? "利用可" : "準備中"}
+          </span>
+        </div>
+        <h2 className="text-xl font-black tracking-tight text-neutral-950 group-hover:text-[#a77806]">
+          {item.title}
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-neutral-600">
+          {item.subtitle}
         </p>
       </div>
+      <div className="mt-6 text-sm font-bold text-[#b48513]">
+        開く
+      </div>
+    </Link>
+  );
+}
 
-      {loadError && (
-        <div className="bg-red-900/20 border border-red-700/40 rounded-xl p-4 mb-6 text-sm text-red-200">
-          <p className="font-semibold mb-1">⚠ Sheets読込失敗</p>
-          <p className="text-xs leading-relaxed">{loadError}</p>
+export default async function AdminHomePage() {
+  const admin = await getCurrentAdmin();
+
+  return (
+    <div className="mx-auto max-w-[1180px]">
+      <div className="mb-8 border-b-2 border-[#d1a227] pb-5">
+        <h1 className="text-4xl font-black tracking-tight text-neutral-950">
+          管理トップ
+        </h1>
+        <div className="mt-4 flex items-center gap-2 text-sm text-neutral-600">
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path d="M20 21a8 8 0 0 0-16 0" />
+            <circle cx="12" cy="8" r="4" />
+          </svg>
+          ログイン中: {admin?.email ?? "-"}
         </div>
-      )}
+      </div>
 
-      {!loadError && orders.length === 0 && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-center text-slate-400">
-          まだWeb注文はありません。
-        </div>
-      )}
-
-      {orders.length > 0 && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900 border-b border-slate-800">
-              <tr className="text-slate-400 text-left">
-                <th className="px-4 py-3 font-semibold">通し番号</th>
-                <th className="px-4 py-3 font-semibold">注文日時</th>
-                <th className="px-4 py-3 font-semibold">モデル</th>
-                <th className="px-4 py-3 font-semibold">顧客</th>
-                <th className="px-4 py-3 font-semibold">連絡先</th>
-                <th className="px-4 py-3 font-semibold text-right">金額(税込)</th>
-                <th className="px-4 py-3 font-semibold">決済</th>
-                <th className="px-4 py-3 font-semibold">ステータス</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {orders.map((order) => (
-                <tr
-                  key={order.sessionId || `${order.serialNumber}-${order.orderedAt}`}
-                  className="hover:bg-slate-800/40 transition-colors"
-                >
-                  <td className="px-4 py-3 font-mono text-slate-300">
-                    {order.serialNumber ?? "—"}
-                    {order.subId && (
-                      <span className="text-slate-500 text-xs ml-1">
-                        -{order.subId}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">
-                    {order.orderedAt || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-white font-semibold">
-                    {order.model || "—"}
-                    {order.machineMaker && (
-                      <div className="text-slate-500 text-xs font-normal mt-0.5">
-                        {order.machineMaker} {order.machineModel}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">
-                    {order.customerName || "—"}
-                    {order.customerAddress && (
-                      <div className="text-slate-500 text-xs mt-0.5">
-                        {order.customerAddress}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-400 text-xs">
-                    {order.customerEmail && <div>{order.customerEmail}</div>}
-                    {order.customerPhone && <div>{order.customerPhone}</div>}
-                  </td>
-                  <td className="px-4 py-3 text-right text-emerald-400 font-mono">
-                    {formatYen(order.amountTotal)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-400 text-xs">
-                    {order.paymentMethod || "—"}
-                    {order.invoiceRequested && (
-                      <div className="text-amber-400 mt-0.5">適格請求書希望</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${statusBadgeClass(order)}`}
-                    >
-                      {statusLabel(order)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <p className="mt-6 text-xs text-slate-500">
-        ※ 既存xlsx履歴データの移行・在庫管理・卸アカウント管理は段階的に追加予定（V2 §12 参照）。
-      </p>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {menuItems.map((item) => (
+          <MenuCard key={item.href} item={item} />
+        ))}
+      </div>
     </div>
   );
 }

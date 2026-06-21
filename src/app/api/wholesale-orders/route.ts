@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { sendHottaOrderEmail } from "@/lib/hotta-order";
 import { fetchPartnerById, getCurrentPartner } from "@/lib/partner-auth";
 import { getSheetsClient } from "@/lib/sheets";
 import {
   formatYen,
+  isGeneratedHottaBracketItem,
+  isHottaBracketItem,
   wholesaleItemsForTier,
   type WholesaleCatalogItem,
 } from "@/lib/wholesale-catalog";
@@ -71,6 +74,7 @@ interface CustomerInput {
   address?: string;
   desiredDeliveryDate?: string;
   paymentTerms?: string;
+  machineModel?: string;
   notes?: string;
 }
 
@@ -230,6 +234,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 400 },
     );
   }
+  const hiddenHottaKitLines = lines.filter((line) =>
+    isGeneratedHottaBracketItem(line.item),
+  );
+  if (hiddenHottaKitLines.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "堀田機工ブラケットはSTEP 3の4項目から選択してください。",
+      },
+      { status: 400 },
+    );
+  }
+
+  const hottaLines = lines.filter((line) => isHottaBracketItem(line.item));
+  if (hottaLines.length > 0 && !customer.machineModel?.trim()) {
+    return NextResponse.json(
+      { error: "堀田機工ブラケットを注文する場合は、取付機種が必要です。" },
+      { status: 400 },
+    );
+  }
   if (!companyName) {
     return NextResponse.json(
       { error: "ログイン中の販売店名を確認できません。再ログインしてください。" },
@@ -246,6 +270,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const totalIncTax = subtotalExTax + tax;
   const detailText = lines
     .map((line) => `${line.item.shortName} x${line.quantity}`)
+    .join(" / ");
+  const hasHottaLines = hottaLines.length > 0;
+  const normalizedNotes = [
+    customer.notes,
+    customer.machineModel ? `取付機種: ${customer.machineModel}` : "",
+    hasHottaLines ? "堀田機工ブラケット価格未定" : "",
+  ]
+    .map((value) => value?.trim())
+    .filter(Boolean)
     .join(" / ");
 
   const spreadsheetIdValue = spreadsheetId();
@@ -291,13 +324,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             totalIncTax,
             customer.desiredDeliveryDate ?? "",
             customer.paymentTerms ?? "",
-            customer.notes ?? "",
+            normalizedNotes,
             session.tier === "distributor"
               ? "special-wholesale-site"
               : "wholesale-site",
             "未納品",
             "",
-            "未請求",
+            hasHottaLines ? "価格確認中" : "未請求",
             "",
             "",
             "",
@@ -323,19 +356,58 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           line.item.partNumber,
           line.item.name,
           line.quantity,
-          line.item.wholesalePriceExTax,
-          line.item.wholesalePriceExTax * line.quantity,
+          isHottaBracketItem(line.item) ? "" : line.item.wholesalePriceExTax,
+          isHottaBracketItem(line.item)
+            ? ""
+            : line.item.wholesalePriceExTax * line.quantity,
           "未引当",
           "未納品",
         ]),
       },
     });
 
+    let hottaMessage = "";
+    let hottaOrderSent = false;
+    let hottaOrderSkipped = false;
+    if (hasHottaLines) {
+      const hottaResult = await sendHottaOrderEmail({
+        orderId: id,
+        customer: {
+          companyName,
+          contactName: customer.contactName,
+          email: customer.email,
+          phone: customer.phone,
+          postalCode: customer.postalCode,
+          address: customer.address,
+          desiredDeliveryDate: customer.desiredDeliveryDate,
+          machineModel: customer.machineModel,
+          notes: customer.notes,
+        },
+        lines: hottaLines,
+      });
+      hottaOrderSent = hottaResult.sent;
+      hottaOrderSkipped = Boolean(hottaResult.skippedReason);
+      if (hottaResult.sent) {
+        hottaMessage = "堀田機工へ注文書メールを送信しました。";
+      } else if (hottaResult.skippedReason) {
+        hottaMessage = `堀田機工メールは未送信です: ${hottaResult.skippedReason}`;
+      } else if (hottaResult.error) {
+        hottaMessage = `堀田機工メール送信に失敗しました: ${hottaResult.error}`;
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       saved: true,
       orderId: id,
-      message: `受注管理表へ保存しました。合計 ${formatYen(totalIncTax)}`,
+      message: [
+        `受注管理表へ保存しました。合計 ${formatYen(totalIncTax)}`,
+        hottaMessage,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      hottaOrderSent,
+      hottaOrderSkipped,
       subtotalExTax,
       tax,
       totalIncTax,

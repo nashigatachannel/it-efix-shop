@@ -16,6 +16,8 @@ export const WHOLESALE_ORDERS_SHEET =
   process.env.GOOGLE_WHOLESALE_ORDERS_SHEET ?? "卸注文管理";
 export const WHOLESALE_ORDER_DETAILS_SHEET =
   process.env.GOOGLE_WHOLESALE_ORDER_DETAILS_SHEET ?? "卸受注明細";
+export const INSTALLATION_RESERVATION_SHEET = "取付予約";
+export const INVENTORY_MASTER_SHEET = "在庫マスタ";
 
 export function getSheetsClient(): sheets_v4.Sheets {
   const credentials = JSON.parse(
@@ -109,6 +111,50 @@ export interface WholesaleOrderDetailRow {
   deliveryStatus: string;
 }
 
+export type InstallationStatus =
+  | "requested"
+  | "proposing"
+  | "confirmed"
+  | "installed"
+  | "cancelled";
+
+export interface InstallationReservationRow {
+  orderId: string;
+  status: InstallationStatus | string;
+  proposalHistory: string;
+  confirmedDate: string;
+  vendorId: string;
+  installedAt: string;
+  returnTrackingNumber: string;
+  notes: string;
+  rowNumber: number;
+}
+
+export interface InventoryMasterRow {
+  productId: string;
+  currentStock: number | null;
+  salesLimit: number | null;
+  lastAdjustedAt: string;
+  notes: string;
+  rowNumber: number;
+}
+
+export interface HottaWholesaleOrderHistoryRow {
+  order: WholesaleOrderRow;
+  details: WholesaleOrderDetailRow[];
+  machineModel: string;
+  notes: string;
+  totalQuantity: number;
+  itemSummary: string;
+}
+
+const HOTTA_BRACKET_PRODUCT_NAMES = new Set([
+  "モーター固定金具",
+  "アンテナプレート",
+  "アンテナブラケット",
+  "モニターブラケット",
+]);
+
 function toNumberOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -196,6 +242,43 @@ function parseWholesaleDetailRow(row: unknown[]): WholesaleOrderDetailRow {
   };
 }
 
+export function isHottaWholesaleDetail(row: WholesaleOrderDetailRow): boolean {
+  return (
+    row.section === "堀田機工" ||
+    HOTTA_BRACKET_PRODUCT_NAMES.has(row.productName)
+  );
+}
+
+function hasHottaWholesaleMarker(order: WholesaleOrderRow): boolean {
+  return (
+    order.notes.includes("堀田機工") ||
+    order.detailText.includes("堀田機工") ||
+    Array.from(HOTTA_BRACKET_PRODUCT_NAMES).some((name) =>
+      order.detailText.includes(name),
+    )
+  );
+}
+
+function extractHottaMachineModel(notes: string): string {
+  const bracketMatch = notes.match(/取付機種\s*[：:]\s*【([^】]+)】/u);
+  if (bracketMatch?.[1]?.trim()) return bracketMatch[1].trim();
+
+  const plainMatch = notes.match(/取付機種\s*[：:]\s*([^/]+)/u);
+  if (plainMatch?.[1]?.trim()) return plainMatch[1].trim();
+
+  return "";
+}
+
+function cleanHottaNotes(notes: string): string {
+  return notes
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/^取付機種\s*[：:]/u.test(part))
+    .filter((part) => part !== "堀田機工ブラケット価格未定")
+    .join(" / ");
+}
+
 export async function fetchWebOrders(): Promise<WebOrderRow[]> {
   if (!SPREADSHEET_ID) return [];
   const sheets = getSheetsClient();
@@ -235,12 +318,12 @@ export async function fetchPartnerWholesaleOrders(
 }
 
 export async function fetchWholesaleOrderDetails(
-  orderId: string,
+  orderId?: string,
 ): Promise<WholesaleOrderDetailRow[]> {
   if (
     !WHOLESALE_SPREADSHEET_ID ||
     !process.env.GOOGLE_SERVICE_ACCOUNT_KEY ||
-    !orderId
+    orderId === ""
   ) {
     return [];
   }
@@ -249,9 +332,115 @@ export async function fetchWholesaleOrderDetails(
     spreadsheetId: WHOLESALE_SPREADSHEET_ID,
     range: sheetRange(WHOLESALE_ORDER_DETAILS_SHEET, "A2:M"),
   });
-  return (res.data.values ?? [])
-    .map(parseWholesaleDetailRow)
-    .filter((row) => row.orderId === orderId);
+  const rows = (res.data.values ?? []).map(parseWholesaleDetailRow);
+  return orderId ? rows.filter((row) => row.orderId === orderId) : rows;
+}
+
+export async function fetchHottaWholesaleOrderHistory(): Promise<
+  HottaWholesaleOrderHistoryRow[]
+> {
+  const [orders, details] = await Promise.all([
+    fetchWholesaleOrders(),
+    fetchWholesaleOrderDetails(),
+  ]);
+  const hottaDetailsByOrderId = new Map<string, WholesaleOrderDetailRow[]>();
+
+  for (const detail of details) {
+    if (!detail.orderId || !isHottaWholesaleDetail(detail)) continue;
+    const current = hottaDetailsByOrderId.get(detail.orderId) ?? [];
+    current.push(detail);
+    hottaDetailsByOrderId.set(detail.orderId, current);
+  }
+
+  return orders
+    .filter(
+      (order) =>
+        hottaDetailsByOrderId.has(order.orderId) ||
+        hasHottaWholesaleMarker(order),
+    )
+    .map((order) => {
+      const hottaDetails = hottaDetailsByOrderId.get(order.orderId) ?? [];
+      const totalQuantity = hottaDetails.reduce(
+        (sum, detail) => sum + (detail.quantity ?? 0),
+        0,
+      );
+      const itemSummary =
+        hottaDetails.length > 0
+          ? hottaDetails
+              .map((detail) =>
+                `${detail.productName || "堀田機工ブラケット"} x${
+                  detail.quantity ?? 0
+                }`,
+              )
+              .join(" / ")
+          : order.detailText;
+
+      return {
+        order,
+        details: hottaDetails,
+        machineModel: extractHottaMachineModel(order.notes),
+        notes: cleanHottaNotes(order.notes),
+        totalQuantity,
+        itemSummary,
+      };
+    });
+}
+
+function parseInstallationReservationRow(
+  row: unknown[],
+  rowNumber: number,
+): InstallationReservationRow {
+  return {
+    orderId: String(row[0] ?? ""),
+    status: String(row[1] ?? ""),
+    proposalHistory: String(row[2] ?? ""),
+    confirmedDate: String(row[3] ?? ""),
+    vendorId: String(row[4] ?? ""),
+    installedAt: String(row[5] ?? ""),
+    returnTrackingNumber: String(row[6] ?? ""),
+    notes: String(row[7] ?? ""),
+    rowNumber,
+  };
+}
+
+export async function fetchInstallationReservations(): Promise<
+  InstallationReservationRow[]
+> {
+  if (!SPREADSHEET_ID) return [];
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: sheetRange(INSTALLATION_RESERVATION_SHEET, "A2:H"),
+  });
+  return (res.data.values ?? []).map((row, index) =>
+    parseInstallationReservationRow(row, index + 2),
+  );
+}
+
+function parseInventoryMasterRow(
+  row: unknown[],
+  rowNumber: number,
+): InventoryMasterRow {
+  return {
+    productId: String(row[0] ?? ""),
+    currentStock: toNumberOrNull(row[1]),
+    salesLimit: toNumberOrNull(row[2]),
+    lastAdjustedAt: String(row[3] ?? ""),
+    notes: String(row[4] ?? ""),
+    rowNumber,
+  };
+}
+
+export async function fetchInventoryMaster(): Promise<InventoryMasterRow[]> {
+  if (!SPREADSHEET_ID) return [];
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: sheetRange(INVENTORY_MASTER_SHEET, "A2:E"),
+  });
+  return (res.data.values ?? []).map((row, index) =>
+    parseInventoryMasterRow(row, index + 2),
+  );
 }
 
 export async function fetchPartnerWholesaleOrderWithDetails(

@@ -7,6 +7,12 @@ import {
   type ProductId,
   type PriceTier,
 } from "@/lib/products";
+import {
+  applyWebCatalogItemToProduct,
+  fetchWebCatalogItems,
+  getWebCatalogAvailableQuantity,
+  isWebCatalogItemSellable,
+} from "@/lib/web-catalog";
 import { getInstallationFeeIncTax } from "@/lib/installation";
 import {
   JP_TAX_RATE_ID,
@@ -149,10 +155,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const retailCatalog =
+    priceTier === "retail" ? await fetchWebCatalogItems() : null;
+  const retailCatalogById = new Map(
+    (retailCatalog?.items ?? []).map((item) => [item.productId, item]),
+  );
+
   // 全商品を解決+価格決定
   const resolvedLines = normalizedLines.map((l) => {
     const product = getProductById(l.productId);
-    return product ? { product, quantity: l.quantity } : null;
+    if (!product) return null;
+    if (priceTier !== "retail") return { product, quantity: l.quantity };
+
+    const catalogItem = retailCatalogById.get(l.productId);
+    if (!catalogItem || !isWebCatalogItemSellable(catalogItem)) {
+      return { product, quantity: l.quantity, unavailable: true };
+    }
+    return {
+      product: applyWebCatalogItemToProduct(product, catalogItem),
+      quantity: l.quantity,
+      catalogItem,
+    };
   });
   const notFound = resolvedLines
     .map((rl, i) => (rl ? null : normalizedLines[i].productId))
@@ -162,6 +185,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { error: `Product not found: ${notFound.join(", ")}` },
       { status: 404 }
     );
+  }
+  if (priceTier === "retail") {
+    const unavailable = resolvedLines
+      .filter((rl) => rl && "unavailable" in rl && rl.unavailable)
+      .map((rl) => rl?.product.name);
+    if (unavailable.length > 0) {
+      return NextResponse.json(
+        { error: `現在販売停止中です: ${unavailable.join(", ")}` },
+        { status: 409 },
+      );
+    }
+
+    const overLimit = resolvedLines
+      .map((rl) => {
+        if (!rl || !("catalogItem" in rl) || !rl.catalogItem) return null;
+        const available = getWebCatalogAvailableQuantity(rl.catalogItem);
+        if (available === null || rl.quantity <= available) return null;
+        return `${rl.product.name} は最大 ${available} 点までです`;
+      })
+      .filter((message): message is string => message !== null);
+    if (overLimit.length > 0) {
+      return NextResponse.json({ error: overLimit.join(" / ") }, { status: 409 });
+    }
   }
   // 卸/特価卸では当該tierに価格設定がある商品のみ販売可
   if (priceTier !== "retail") {

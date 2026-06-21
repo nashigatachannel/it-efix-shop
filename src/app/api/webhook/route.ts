@@ -10,6 +10,7 @@ const SPREADSHEET_ID =
   "";
 const WEB_ORDERS_SHEET = "Web注文";
 const PENDING_MODELS_SHEET = "機種保留マスタ";
+const INSTALLATION_RESERVATION_SHEET = "取付予約";
 
 async function getGoogleSheetsClient() {
   const credentials = JSON.parse(
@@ -214,6 +215,58 @@ async function upsertWebOrder(
   return { created: true, serialNumber };
 }
 
+async function upsertInstallationReservation(
+  sheets: ReturnType<typeof google.sheets>,
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const metadata = session.metadata ?? {};
+  if (metadata.selfInstall !== "false") return;
+
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${INSTALLATION_RESERVATION_SHEET}!A2:A`,
+    });
+    const values = res.data.values ?? [];
+    const alreadyExists = values.some(
+      (row) => String(row[0] ?? "").trim() === session.id,
+    );
+    if (alreadyExists) return;
+
+    const desiredDates = [
+      metadata.desiredDate1,
+      metadata.desiredDate2,
+      metadata.desiredDate3,
+    ]
+      .map((value) => (value ?? "").trim())
+      .filter(Boolean)
+      .join(", ");
+    const proposalHistory = desiredDates ? `希望: ${desiredDates}` : "";
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${INSTALLATION_RESERVATION_SHEET}!A:H`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [
+          [
+            session.id,
+            "requested",
+            proposalHistory,
+            "",
+            "",
+            "",
+            "",
+            "Webhook自動登録",
+          ],
+        ],
+      },
+    });
+  } catch (err) {
+    console.error("Failed to upsert installation reservation:", err);
+  }
+}
+
 async function upsertPendingModel(
   sheets: ReturnType<typeof google.sheets>,
   maker: string,
@@ -322,6 +375,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           metadata.machineModel ?? "",
           session.id
         );
+        await upsertInstallationReservation(sheets, session);
       }
     } catch (err) {
       console.error("Failed to write to Google Sheets:", err);

@@ -317,6 +317,13 @@ async function fetchAllPartnerSheetRecords(): Promise<PartnerSheetRecord[]> {
   return [...normalRecords, ...specialRecords];
 }
 
+export async function fetchPartnerProfiles(): Promise<PartnerProfile[]> {
+  const records = await fetchAllPartnerSheetRecords();
+  return records
+    .filter((record) => record.enabled)
+    .map((record) => toPartnerProfile(record));
+}
+
 async function fetchLegacyPartnerRows() {
   if (!SPREADSHEET_ID) return [];
   const sheets = getSheetsClient();

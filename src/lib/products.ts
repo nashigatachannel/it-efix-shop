@@ -23,6 +23,10 @@ export interface Product {
   image?: string;
   /** 販売停止フラグ。trueの場合、新規販売ページから除外（履歴表示用に定義は残す） */
   isDiscontinued?: boolean;
+  /** Web販売マスタで設定された購入可能数。null/undefined は上限なし */
+  webAvailableQuantity?: number | null;
+  /** Web販売マスタ上の販売状態 */
+  webCatalogStatus?: string;
 }
 
 export type PriceTier = "retail" | "wholesale" | "distributor";
