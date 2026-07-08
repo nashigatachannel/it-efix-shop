@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-07",
+  "generatedAt": "2026-07-09",
   "taxRate": 0.1,
   "heroImage": "/wholesale-assets/wholesale-hero.png",
   "mainItems": [
@@ -3660,14 +3660,14 @@
       "sourceRow": 208
     },
     {
-      "id": "part-207-207",
+      "id": "part-207-e20",
       "kind": "part",
-      "shortName": "載せ替えアンテナプレート",
+      "shortName": "アンテナプレート(E20載せ替え用)",
       "model": "eSteer20/20MAX",
-      "section": "オプション",
+      "section": "堀田機工",
       "category": "ブラケット",
       "partNumber": "",
-      "name": "載せ替えアンテナプレート",
+      "name": "アンテナプレート(E20載せ替え用)",
       "requiredQty": 1,
       "wholesalePriceExTax": 8000,
       "retailPriceExTax": null,
@@ -7452,8 +7452,8 @@
       "matched": false
     },
     {
-      "id": "part-207-207",
-      "name": "載せ替えアンテナプレート",
+      "id": "part-207-e20",
+      "name": "アンテナプレート(E20載せ替え用)",
       "partNumber": "",
       "image": "/wholesale-assets/image-pending.png",
       "imageSourceSheet": "",
