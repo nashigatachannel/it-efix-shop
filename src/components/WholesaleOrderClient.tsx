@@ -521,6 +521,70 @@ function unique(values: string[]): string[] {
   );
 }
 
+interface OptionGroup {
+  key: string;
+  label: string;
+  items: WholesaleCatalogItem[];
+}
+
+const SLEEVE_CATEGORY = "スリーブ";
+const UNCATEGORIZED_SECTION_LABEL = "未分類";
+// 表示優先順。「スリーブ」は section ではなく category === "スリーブ" の品目を
+// section 横断でまとめる仮想グループとして、この位置に差し込む。
+const OPTION_SECTION_PRIORITY = [
+  "標準パッケージ",
+  "載せ替えセット",
+  "オプション",
+  "堀田機工",
+];
+
+function buildOptionGroups(items: WholesaleCatalogItem[]): OptionGroup[] {
+  const sleeveItems = items.filter((item) => item.category === SLEEVE_CATEGORY);
+  const sleeveIds = new Set(sleeveItems.map((item) => item.id));
+  const remainingItems = items.filter((item) => !sleeveIds.has(item.id));
+
+  const bySection = new Map<string, WholesaleCatalogItem[]>();
+  for (const item of remainingItems) {
+    const key = item.section || UNCATEGORIZED_SECTION_LABEL;
+    const list = bySection.get(key);
+    if (list) {
+      list.push(item);
+    } else {
+      bySection.set(key, [item]);
+    }
+  }
+
+  const groups: OptionGroup[] = [];
+  for (const section of OPTION_SECTION_PRIORITY) {
+    const sectionItems = bySection.get(section);
+    bySection.delete(section);
+    if (sectionItems?.length) {
+      groups.push({ key: section, label: section, items: sectionItems });
+    }
+    if (section === "オプション" && sleeveItems.length > 0) {
+      groups.push({ key: SLEEVE_CATEGORY, label: SLEEVE_CATEGORY, items: sleeveItems });
+    }
+  }
+
+  // 優先順に含まれない残りの section(サービス/未分類 等)は、元の並び順(登場順)で末尾に追加する。
+  // 品目を消さないため、既知グループ以外もここで必ず出す。
+  const remainingSectionKeys = Array.from(bySection.keys()).sort((a, b) => {
+    const indexOf = (section: string) =>
+      remainingItems.findIndex(
+        (item) => (item.section || UNCATEGORIZED_SECTION_LABEL) === section,
+      );
+    return indexOf(a) - indexOf(b);
+  });
+  for (const section of remainingSectionKeys) {
+    const sectionItems = bySection.get(section);
+    if (sectionItems?.length) {
+      groups.push({ key: section, label: section, items: sectionItems });
+    }
+  }
+
+  return groups;
+}
+
 function sortByDisplayOrder(
   items: WholesaleCatalogItem[],
   displayOrderById: Record<string, number>,
@@ -718,6 +782,7 @@ export default function WholesaleOrderClient({
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [openOptionGroups, setOpenOptionGroups] = useState<Record<string, boolean>>({});
   const [customer, setCustomer] = useState<CustomerInput>(() => ({
     ...EMPTY_CUSTOMER,
     contactName: partnerDefaults.contactName,
@@ -847,6 +912,21 @@ export default function WholesaleOrderClient({
     sectionFilter,
     standaloneOptionItems,
   ]);
+
+  const isOptionFilterActive =
+    search.trim() !== "" ||
+    modelFilter !== "all" ||
+    categoryFilter !== "all" ||
+    sectionFilter !== "all";
+
+  const optionGroups = useMemo(
+    () => buildOptionGroups(visibleOptions),
+    [visibleOptions],
+  );
+
+  const toggleOptionGroup = useCallback((key: string) => {
+    setOpenOptionGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const parentUnitCountFor = useCallback(
     (item: WholesaleCatalogItem): number => {
@@ -1831,7 +1911,60 @@ export default function WholesaleOrderClient({
                 絞り込み解除
               </button>
             </div>
-            <div className="grid gap-3">{visibleOptions.map(renderOptionItem)}</div>
+            <div className="grid gap-3">
+              {optionGroups.map((group) => {
+                const isOpen = isOptionFilterActive || Boolean(openOptionGroups[group.key]);
+                const panelId = `option-group-panel-${group.key}`;
+                return (
+                  <div
+                    key={group.key}
+                    className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleOptionGroup(group.key)}
+                      aria-expanded={isOpen}
+                      aria-controls={panelId}
+                      className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-emerald-50/40"
+                    >
+                      <span className="flex items-center gap-2 text-sm font-bold text-stone-950 md:text-base">
+                        {group.label}
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
+                          {group.items.length}件
+                        </span>
+                      </span>
+                      <svg
+                        viewBox="0 0 20 20"
+                        aria-hidden="true"
+                        className={`h-5 w-5 flex-shrink-0 text-stone-500 transition-transform duration-300 ${
+                          isOpen ? "rotate-180" : ""
+                        }`}
+                      >
+                        <path
+                          d="M5 7l5 6 5-6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <div
+                      id={panelId}
+                      className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                      style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="grid gap-3 p-4 pt-0">
+                          {group.items.map(renderOptionItem)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             </div>
           </details>
 
