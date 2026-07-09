@@ -531,11 +531,12 @@ const SLEEVE_CATEGORY = "スリーブ";
 const UNCATEGORIZED_SECTION_LABEL = "未分類";
 // 表示優先順。「スリーブ」は section ではなく category === "スリーブ" の品目を
 // section 横断でまとめる仮想グループとして、この位置に差し込む。
+// 「堀田機工」section の品目は STEP 3(hottaBracketItems)に集約するため、
+// STEP 2 のアコーディオン優先順には含めない。
 const OPTION_SECTION_PRIORITY = [
   "標準パッケージ",
   "載せ替えセット",
   "オプション",
-  "堀田機工",
 ];
 
 function buildOptionGroups(items: WholesaleCatalogItem[]): OptionGroup[] {
@@ -820,7 +821,9 @@ export default function WholesaleOrderClient({
   const hottaBracketItems = useMemo(
     () =>
       sortByDisplayOrder(
-        optionItems.filter((item) => isHottaBracketItem(item)),
+        optionItems.filter(
+          (item) => isHottaBracketItem(item) || item.section === "堀田機工",
+        ),
         displayOrderById,
       ),
     [displayOrderById, optionItems],
@@ -830,7 +833,9 @@ export default function WholesaleOrderClient({
       sortByDisplayOrder(
         optionItems.filter(
           (item) =>
-            !isHottaBracketItem(item) && !isGeneratedHottaBracketItem(item),
+            !isHottaBracketItem(item) &&
+            !isGeneratedHottaBracketItem(item) &&
+            item.section !== "堀田機工",
         ),
         displayOrderById,
       ),
@@ -1640,25 +1645,61 @@ export default function WholesaleOrderClient({
     );
   };
 
-  const renderHottaBracketItem = (item: WholesaleCatalogItem) => (
-    <article
-      key={item.id}
-      className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 shadow-sm sm:grid-cols-[1fr_116px] sm:items-center"
-    >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-base font-bold text-stone-950">{item.shortName}</h3>
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-            価格未定
-          </span>
+  const renderHottaBracketItem = (item: WholesaleCatalogItem) => {
+    // ハードコードの価格未定4品(hotta-*)は従来どおり注文書送付の案内のみ。
+    // それ以外(section === "堀田機工" の生成カタログ品)は価格が確定しているため、
+    // STEP 2の部品カードと同じ見た目で税抜/税込価格を表示し、通常どおりカート集計に含める。
+    if (isHottaBracketItem(item)) {
+      return (
+        <article
+          key={item.id}
+          className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 shadow-sm sm:grid-cols-[1fr_116px] sm:items-center"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-stone-950">{item.shortName}</h3>
+              <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                価格未定
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-stone-500">
+              取付機種を添えて堀田機工へ注文書を送付
+            </p>
+          </div>
+          {renderQuantity(item)}
+        </article>
+      );
+    }
+
+    return (
+      <article
+        key={item.id}
+        className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_150px_122px] md:items-center"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-bold text-stone-950">{item.shortName}</h3>
+            <span className="rounded bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
+              {item.model}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-stone-500">
+            {item.partNumber || "品番未設定"} / {item.name}
+          </p>
         </div>
-        <p className="mt-1 text-sm text-stone-500">
-          取付機種を添えて堀田機工へ注文書を送付
-        </p>
-      </div>
-      {renderQuantity(item)}
-    </article>
-  );
+        <div className="font-mono">
+          <p className="text-xs text-stone-500">{priceLabel}</p>
+          <p className="text-lg font-bold text-emerald-700">
+            ¥{formatYen(item.wholesalePriceExTax)}
+          </p>
+          <p className="text-xs text-stone-500">
+            税込 ¥{formatYen(item.wholesalePriceIncTax)}
+          </p>
+        </div>
+        {renderQuantity(item)}
+      </article>
+    );
+  };
 
   return (
     <main className="min-h-screen bg-[#f5f7f2] text-stone-950">
