@@ -149,6 +149,8 @@ const SET_COMPONENT_PARENT_IDS: Record<string, string[]> = {
   "part-142-kpm-010": ["part-141-kpm-009"],
 };
 const SET_COMPONENT_CHILD_IDS = new Set(Object.keys(SET_COMPONENT_PARENT_IDS));
+const TRANSFER_SET_ITEM_ID = "part-097-jpn001";
+const TRANSFER_SET_SECTION = "載せ替えセット";
 
 const E20_STANDARD_SHARED_LINES: SetDetailLine[] = [
   {
@@ -239,44 +241,6 @@ const E20_PACKAGE_20MAX_DETAIL: SetDetailGroup = {
   ],
 };
 
-const E20_TRANSFER_SET_DETAIL: SetDetailGroup = {
-  id: "e20-transfer-set",
-  title: "E20 載せ替えセット",
-  partNumber: "JPN001",
-  model: "eSteer20/20MAX",
-  category: "載せ替えセット",
-  note: "並び順.xlsxのE20載せ替えセット欄を元にした内容確認用です。",
-  lines: [
-    {
-      partNumber: "4006020058",
-      name: "ESW-2 Electric Steering Wheel(36cm with horn)",
-      quantity: "1",
-    },
-    {
-      partNumber: "4103020345",
-      name: "Integrated Main Cable(with horn connector)",
-      quantity: "1",
-    },
-    {
-      partNumber: "203000513",
-      name: "Steering wheel power ball(1units)",
-      quantity: "1",
-      note: "カタログ未掲載",
-    },
-    { partNumber: "4102030090", name: "ESR-1 Receiver Bracket", quantity: "2" },
-    { partNumber: "103013031", name: "Plate with Ball", quantity: "1" },
-    { partNumber: "103013032", name: "Double Socket Arm", quantity: "1" },
-    { partNumber: "104080012", name: "U-bolt M5*35*50 (304)", quantity: "1" },
-    { partNumber: "-", name: "sleeve", quantity: "1", note: "型式次第" },
-    {
-      partNumber: "-",
-      name: "Motor bracket",
-      quantity: "1",
-      note: "型式次第",
-    },
-  ],
-};
-
 const SET_DETAIL_GROUPS_BY_PARENT_ID: Record<string, SetDetailGroup[]> = {
   "set-20": [E20_PACKAGE_20_DETAIL],
   "part-114-8006010189": [E20_PACKAGE_20_DETAIL],
@@ -293,6 +257,7 @@ const DISPLAY_ORDER_BY_ID: Record<string, number> = {
   "part-054-4090040071": 1006,
   "part-065-4109020156": 1007,
   "part-055-4090040069": 1008,
+  "part-097-jpn001": 1009,
   "part-056-4006020058": 1010,
   "part-058-101990284": 1011,
   "part-061-4103020345": 1012,
@@ -540,7 +505,10 @@ const OPTION_SECTION_PRIORITY = [
 ];
 
 function buildOptionGroups(items: WholesaleCatalogItem[]): OptionGroup[] {
-  const sleeveItems = items.filter((item) => item.category === SLEEVE_CATEGORY);
+  const sleeveItems = items.filter(
+    (item) =>
+      item.category === SLEEVE_CATEGORY && !isTransferSetComponentItem(item),
+  );
   const sleeveIds = new Set(sleeveItems.map((item) => item.id));
   const remainingItems = items.filter((item) => !sleeveIds.has(item.id));
 
@@ -722,6 +690,12 @@ function zeroPriceLabel(item: WholesaleCatalogItem): string | null {
   return "付属品";
 }
 
+function isTransferSetComponentItem(
+  item: Pick<WholesaleCatalogItem, "id" | "section">,
+): boolean {
+  return item.section === TRANSFER_SET_SECTION && item.id !== TRANSFER_SET_ITEM_ID;
+}
+
 function isPendingWholesalePrice(item: WholesaleCatalogItem): boolean {
   return (
     item.wholesalePriceExTax === 0 &&
@@ -812,8 +786,6 @@ export default function WholesaleOrderClient({
     pageConfig.pageKey === "legacy"
       ? LEGACY_DISPLAY_ORDER_BY_ID
       : DISPLAY_ORDER_BY_ID;
-  const pageSetDetailGroups =
-    pageConfig.pageKey === "current" ? [E20_TRANSFER_SET_DETAIL] : [];
   const orderedMainItems = useMemo(
     () => sortByDisplayOrder(mainItems, displayOrderById),
     [displayOrderById, mainItems],
@@ -959,6 +931,7 @@ export default function WholesaleOrderClient({
 
   const effectiveQuantity = useCallback(
     (item: WholesaleCatalogItem): number => {
+      if (isTransferSetComponentItem(item)) return 0;
       if (isPendingWholesalePrice(item)) return 0;
       if (!isLinkedAccessory(item)) return quantities[item.id] ?? 0;
       return parentUnitCountFor(item) * Math.max(1, item.requiredQty);
@@ -1331,13 +1304,16 @@ export default function WholesaleOrderClient({
   const renderQuantity = (item: WholesaleCatalogItem) => {
     const linked = isLinkedAccessory(item);
     const pendingPrice = isPendingWholesalePrice(item);
-    const locked = linked || pendingPrice;
+    const transferSetComponent = isTransferSetComponentItem(item);
+    const locked = linked || pendingPrice || transferSetComponent;
     const quantity = effectiveQuantity(item);
-    const lockedTitle = pendingPrice
-      ? "卸価格確認中のため数量入力できません"
-      : isDisplayLinkedLicense(item)
-        ? "ディスプレイ(20/20MAX)の数量に連動します"
-        : "本体セットの台数に連動します";
+    const lockedTitle = transferSetComponent
+      ? "載せ替えセットに含まれる部品のため単品注文できません"
+      : pendingPrice
+        ? "卸価格確認中のため数量入力できません"
+        : isDisplayLinkedLicense(item)
+          ? "ディスプレイ(20/20MAX)の数量に連動します"
+          : "本体セットの台数に連動します";
     const disabledClass = locked
       ? "cursor-not-allowed bg-stone-100 text-stone-400"
       : "text-stone-700 hover:bg-stone-100";
@@ -1364,6 +1340,7 @@ export default function WholesaleOrderClient({
           type="number"
           onChange={(event) => setQuantity(item.id, event.target.value)}
           readOnly={locked}
+          disabled={locked}
           className={`h-10 w-10 border-x border-stone-200 text-center text-sm font-semibold outline-none ${
             locked ? "bg-stone-50 text-stone-500" : ""
           }`}
@@ -1425,32 +1402,6 @@ export default function WholesaleOrderClient({
         ))}
       </ul>
     </details>
-  );
-
-  const renderSetInfoCard = (group: SetDetailGroup) => (
-    <article
-      key={group.id}
-      className="rounded-lg border border-cyan-200 bg-cyan-50/60 p-4 shadow-sm"
-    >
-      <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
-        <span className="rounded bg-stone-100 px-2 py-0.5 text-stone-700">
-          {group.model}
-        </span>
-        <span className="rounded bg-cyan-100 px-2 py-0.5 text-cyan-800">
-          {group.category}
-        </span>
-        <span className="rounded bg-white px-2 py-0.5 text-stone-700">
-          内容確認
-        </span>
-      </div>
-      <h3 className="mt-2 text-base font-bold text-stone-950">
-        {group.title}
-      </h3>
-      <p className="mt-1 text-xs text-stone-500">
-        {group.partNumber ?? "-"} / {group.note}
-      </p>
-      {renderSetDetailGroup(group)}
-    </article>
   );
 
   const renderMainItem = (item: WholesaleCatalogItem) => {
@@ -1516,21 +1467,38 @@ export default function WholesaleOrderClient({
   const renderOptionItem = (item: WholesaleCatalogItem) => {
     const bundledChildren = bundledChildrenByParentId[item.id] ?? [];
     const detailGroups = SET_DETAIL_GROUPS_BY_PARENT_ID[item.id] ?? [];
+    const transferSetComponent = isTransferSetComponentItem(item);
     return (
       <article
         key={item.id}
-        className="grid min-h-[168px] grid-cols-[112px_1fr] overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm"
+        className={`grid overflow-hidden rounded-lg border border-stone-200 ${
+          transferSetComponent
+            ? "ml-5 min-h-[132px] grid-cols-[88px_1fr] bg-stone-50/80 shadow-none md:ml-8"
+            : "min-h-[168px] grid-cols-[112px_1fr] bg-white shadow-sm"
+        }`}
       >
-        <div className="relative flex h-full min-h-[168px] items-center justify-center bg-stone-50">
+        <div
+          className={`relative flex h-full items-center justify-center ${
+            transferSetComponent
+              ? "min-h-[132px] bg-stone-100/70"
+              : "min-h-[168px] bg-stone-50"
+          }`}
+        >
           <Image
             src={item.image}
             alt={item.name}
             fill
-            sizes="112px"
+            sizes={transferSetComponent ? "88px" : "112px"}
             className="object-contain p-2"
           />
         </div>
-        <div className="grid gap-3 p-4 md:grid-cols-[1fr_150px_122px] md:items-center">
+        <div
+          className={`grid gap-3 md:items-center ${
+            transferSetComponent
+              ? "p-3 md:grid-cols-[1fr_132px_116px]"
+              : "p-4 md:grid-cols-[1fr_150px_122px]"
+          }`}
+        >
           <div className="min-w-0">
             <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
               <span className="rounded bg-stone-100 px-2 py-0.5 text-stone-700">
@@ -1547,6 +1515,11 @@ export default function WholesaleOrderClient({
               {zeroPriceLabel(item) && (
                 <span className="rounded bg-emerald-100 px-2 py-0.5 text-emerald-800">
                   {zeroPriceLabel(item)}
+                </span>
+              )}
+              {transferSetComponent && (
+                <span className="rounded bg-stone-200 px-2 py-0.5 text-stone-700">
+                  セット内訳
                 </span>
               )}
               {bundledChildren.length > 0 && (
@@ -1570,7 +1543,11 @@ export default function WholesaleOrderClient({
                 </span>
               )}
             </div>
-            <h3 className="mt-2 text-sm font-bold text-stone-950 md:text-base">
+            <h3
+              className={`mt-2 font-bold text-stone-950 ${
+                transferSetComponent ? "text-sm" : "text-sm md:text-base"
+              }`}
+            >
               {item.shortName}
             </h3>
             <p className="mt-1 text-xs text-stone-500">
@@ -1609,10 +1586,12 @@ export default function WholesaleOrderClient({
                 ? "卸価格確認中"
                 : isHottaBracketItem(item)
                   ? "堀田機工へ注文書送付"
+                  : transferSetComponent
+                    ? "セット内訳"
                   : (zeroPriceLabel(item) ?? priceLabel)}
             </p>
             <p
-              className={`text-lg font-bold ${
+              className={`${transferSetComponent ? "text-base" : "text-lg"} font-bold ${
                 isPendingWholesalePrice(item)
                   ? "text-stone-700"
                   : isHottaBracketItem(item)
@@ -1632,6 +1611,11 @@ export default function WholesaleOrderClient({
                 {zeroPriceNote(item)}
               </p>
             )}
+            {transferSetComponent && (
+              <p className="text-xs font-semibold text-stone-500">
+                単品注文不可
+              </p>
+            )}
             {bundledChildren.length > 0 && (
               <p className="text-xs font-semibold text-cyan-700">
                 構成品を含むセット
@@ -1639,7 +1623,7 @@ export default function WholesaleOrderClient({
             )}
             <p className="text-xs text-stone-500">必要数 {item.requiredQty}</p>
           </div>
-          {renderQuantity(item)}
+          {!transferSetComponent && renderQuantity(item)}
         </div>
       </article>
     );
@@ -1871,7 +1855,7 @@ export default function WholesaleOrderClient({
           <details className="group">
             <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
               <p className="text-sm font-bold text-emerald-700">STEP 2</p>
-              <h2 className="text-2xl font-black">部品・オプションを選択</h2>
+              <h2 className="text-2xl font-black">部品を選択</h2>
               <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
                 部品を表示
               </span>
@@ -1932,11 +1916,6 @@ export default function WholesaleOrderClient({
                 ))}
               </select>
             </div>
-            {pageSetDetailGroups.length > 0 && (
-              <div className="grid gap-3">
-                {pageSetDetailGroups.map(renderSetInfoCard)}
-              </div>
-            )}
             <div className="flex items-center justify-between text-sm text-stone-500">
               <span>{visibleOptions.length}件を表示</span>
               <button

@@ -1351,7 +1351,7 @@
       "retailPriceExTax": null,
       "wholesalePriceIncTax": 0,
       "retailPriceIncTax": null,
-      "image": "/wholesale-assets/image-pending.png",
+      "image": "/wholesale-assets/product-049.png",
       "sourceSheet": "オプション価格表",
       "sourceRow": 73
     },
@@ -1808,7 +1808,7 @@
     {
       "id": "part-097-jpn001",
       "kind": "part",
-      "shortName": "載せ替えセット(E20)",
+      "shortName": "載せ替えセット",
       "model": "eSteer20/20MAX",
       "section": "載せ替えセット",
       "category": "その他",
@@ -4387,8 +4387,8 @@
     {
       "sourceName": "ExcelMapped_esteer20_R013_4103020345_8bb9a4a351.png",
       "path": "/wholesale-assets/product-048.png",
-      "width": 218,
-      "height": 210,
+      "width": 72,
+      "height": 96,
       "sheet": "eSteer20（20max)",
       "sourceRow": 13,
       "rowHint": 13,
@@ -6165,11 +6165,11 @@
       "id": "part-071-8006020027",
       "name": "Steering wheel power ball(10units)",
       "partNumber": "8006020027",
-      "image": "/wholesale-assets/image-pending.png",
-      "imageSourceSheet": "",
-      "imageSourceRow": null,
-      "imageSourceName": "",
-      "matched": false
+      "image": "/wholesale-assets/product-049.png",
+      "imageSourceSheet": "eSteer20（20max)",
+      "imageSourceRow": 14,
+      "imageSourceName": "ExcelMapped_esteer20_R014_203000513_8bb9a4a351.png",
+      "matched": true
     },
     {
       "id": "part-072-203000513",
