@@ -13,7 +13,10 @@ import {
   getWebCatalogAvailableQuantity,
   isWebCatalogItemSellable,
 } from "@/lib/web-catalog";
-import { getInstallationFeeIncTax } from "@/lib/installation";
+import {
+  getInstallationFeeIncTax,
+  hasInstallationService,
+} from "@/lib/installation";
 import {
   JP_TAX_RATE_ID,
   INVOICE_FOOTER,
@@ -28,10 +31,17 @@ interface CustomerInfo {
   prefecture?: string;
   addressDetail?: string;
   address?: string;
+  deliveryAddressDifferent?: boolean;
+  deliveryPostalCode?: string;
+  deliveryPrefecture?: string;
+  deliveryAddressDetail?: string;
   phone: string;
   email: string;
+  machineType?: string;
+  machineTypeOther?: string;
   machineMaker: string;
-  machineModel: string;
+  machineMakerOther?: string;
+  machineModel?: string;
   notes?: string;
 }
 
@@ -60,12 +70,34 @@ interface CheckoutRequestBody {
 
 // V3: 注文可能な都道府県。北海道のみ。将来エリア拡大時はここに追加する。
 const AVAILABLE_PREFECTURES = new Set<string>(["北海道"]);
+const OTHER_OPTION = "その他";
 
 function buildAddressString(customer: CustomerInfo): string {
   if (customer.prefecture && customer.addressDetail) {
     return `${customer.prefecture} ${customer.addressDetail}`.trim();
   }
   return customer.address?.trim() ?? "";
+}
+
+function buildDeliveryAddressString(customer: CustomerInfo): string {
+  if (!customer.deliveryAddressDifferent) return buildAddressString(customer);
+  return `${customer.deliveryPrefecture ?? ""} ${
+    customer.deliveryAddressDetail ?? ""
+  }`.trim();
+}
+
+function resolveOtherChoice(value?: string, otherValue?: string): string {
+  const trimmed = (value ?? "").trim();
+  if (trimmed !== OTHER_OPTION) return trimmed;
+  const other = (otherValue ?? "").trim();
+  return other ? `${OTHER_OPTION}（${other}）` : OTHER_OPTION;
+}
+
+function appendNote(baseNote: string | undefined, extraLines: string[]): string {
+  return [baseNote ?? "", ...extraLines]
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -105,9 +137,54 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     );
   }
+  const customerAddressString = buildAddressString(customer);
+  const deliveryAddressString = buildDeliveryAddressString(customer);
+  const machineTypeDisplay = resolveOtherChoice(
+    customer.machineType,
+    customer.machineTypeOther,
+  );
+  const machineMakerDisplay = resolveOtherChoice(
+    customer.machineMaker,
+    customer.machineMakerOther,
+  );
+  const machineModel = (customer.machineModel ?? "").trim();
 
   // V3: 一般客(retail)は都道府県を必須かつ販売可能エリアのみ
   if (priceTier === "retail") {
+    if (
+      !customer.phone ||
+      !customer.postalCode ||
+      !customer.prefecture ||
+      !customer.addressDetail ||
+      !customer.machineType ||
+      !customer.machineMaker
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "氏名、郵便番号、都道府県、住所、電話番号、メールアドレス、農機種別、農機メーカーは必須です。",
+        },
+        { status: 400 },
+      );
+    }
+    if (
+      customer.machineType === OTHER_OPTION &&
+      !customer.machineTypeOther?.trim()
+    ) {
+      return NextResponse.json(
+        { error: "その他の農機種別を入力してください。" },
+        { status: 400 },
+      );
+    }
+    if (
+      customer.machineMaker === OTHER_OPTION &&
+      !customer.machineMakerOther?.trim()
+    ) {
+      return NextResponse.json(
+        { error: "その他の農機メーカー名を入力してください。" },
+        { status: 400 },
+      );
+    }
     if (customer.prefecture) {
       if (!AVAILABLE_PREFECTURES.has(customer.prefecture)) {
         return NextResponse.json(
@@ -119,11 +196,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
     }
-    if (!buildAddressString(customer)) {
+    if (!customerAddressString) {
       return NextResponse.json(
         { error: "customer.prefecture and customer.addressDetail are required" },
         { status: 400 }
       );
+    }
+    if (customer.deliveryAddressDifferent) {
+      if (
+        !customer.deliveryPostalCode ||
+        !customer.deliveryPrefecture ||
+        !customer.deliveryAddressDetail
+      ) {
+        return NextResponse.json(
+          { error: "納品先住所を入力してください。" },
+          { status: 400 },
+        );
+      }
+      if (!AVAILABLE_PREFECTURES.has(customer.deliveryPrefecture)) {
+        return NextResponse.json(
+          {
+            error:
+              "現在は北海道のみ販売しております。本州・四国・九州への展開は順次拡大予定です。",
+          },
+          { status: 400 },
+        );
+      }
     }
   }
 
@@ -228,12 +326,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // V3: 取付サービスのオプトアウト(retail tier 限定)
   const selfInstall =
     priceTier === "retail" && installation?.selfInstall === true;
+  const needsDesiredDates =
+    priceTier === "retail" &&
+    !selfInstall &&
+    resolvedLines.some((rl) => rl && hasInstallationService(rl.product.id));
+  if (
+    needsDesiredDates &&
+    (!installation?.desiredDate1?.trim() || !installation?.desiredDate2?.trim())
+  ) {
+    return NextResponse.json(
+      { error: "取付希望日は第1希望と第2希望が必須です。" },
+      { status: 400 },
+    );
+  }
 
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ??
     (request.headers.get("origin") ?? "http://localhost:3000");
-
-  const customerAddressString = buildAddressString(customer);
+  const deliveryPostalCode = customer.deliveryAddressDifferent
+    ? customer.deliveryPostalCode ?? ""
+    : customer.postalCode;
+  const notesWithContext = appendNote(customer.notes, [
+    machineTypeDisplay ? `農機種別: ${machineTypeDisplay}` : "",
+    customer.deliveryAddressDifferent
+      ? `納品先: ${
+          deliveryPostalCode ? `〒${deliveryPostalCode} ` : ""
+        }${deliveryAddressString}`
+      : "",
+  ]);
 
   // Bank Transfer は customer ID が必須なので Stripe Customer を作成
   const stripeCustomer = await stripe.customers.create({
@@ -244,8 +364,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     metadata: {
       postalCode: customer.postalCode,
       address: customerAddressString,
-      machineMaker: customer.machineMaker,
-      machineModel: customer.machineModel,
+      deliveryPostalCode,
+      deliveryAddress: deliveryAddressString,
+      deliveryAddressDifferent: customer.deliveryAddressDifferent ? "true" : "false",
+      machineType: machineTypeDisplay,
+      machineMaker: machineMakerDisplay,
+      machineModel,
     },
   });
 
@@ -318,11 +442,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       customerPostalCode: customer.postalCode,
       customerPrefecture: customer.prefecture ?? "",
       customerAddress: customerAddressString,
+      deliveryAddressDifferent: customer.deliveryAddressDifferent ? "true" : "false",
+      deliveryPostalCode,
+      deliveryPrefecture: customer.deliveryAddressDifferent
+        ? customer.deliveryPrefecture ?? ""
+        : customer.prefecture ?? "",
+      deliveryAddress: deliveryAddressString,
       customerPhone: customer.phone,
       customerEmail: customer.email,
-      machineMaker: customer.machineMaker,
-      machineModel: customer.machineModel,
-      notes: customer.notes ?? "",
+      machineType: machineTypeDisplay,
+      machineMaker: machineMakerDisplay,
+      machineModel,
+      notes: notesWithContext,
       requestInvoice: "true",
       priceTier,
       partnerId,

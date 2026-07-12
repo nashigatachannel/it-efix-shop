@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -25,9 +25,16 @@ interface CustomerInfo {
   postalCode: string;
   prefecture: string;
   addressDetail: string;
+  deliveryAddressDifferent: boolean;
+  deliveryPostalCode: string;
+  deliveryPrefecture: string;
+  deliveryAddressDetail: string;
   phone: string;
   email: string;
+  machineType: string;
+  machineTypeOther: string;
   machineMaker: string;
+  machineMakerOther: string;
   machineModel: string;
   notes: string;
   requestInvoice: boolean;
@@ -55,14 +62,26 @@ interface OrderLineItem {
   lineTotalIncTax: number;
 }
 
+interface PostalAddressLookupResult {
+  prefecture: string;
+  addressDetail: string;
+}
+
 const EMPTY_CUSTOMER: CustomerInfo = {
   name: "",
   postalCode: "",
   prefecture: "",
   addressDetail: "",
+  deliveryAddressDifferent: false,
+  deliveryPostalCode: "",
+  deliveryPrefecture: "",
+  deliveryAddressDetail: "",
   phone: "",
   email: "",
+  machineType: "",
+  machineTypeOther: "",
   machineMaker: "",
+  machineMakerOther: "",
   machineModel: "",
   notes: "",
   requestInvoice: true,
@@ -82,6 +101,19 @@ const EMPTY_AGREEMENT: AgreementState = {
 };
 
 const MAX_QUANTITY = 99;
+const OTHER_OPTION = "その他";
+const MACHINE_TYPES = ["トラクター", "コンバイン", "田植え機", OTHER_OPTION] as const;
+const MACHINE_MAKERS = [
+  "クボタ",
+  "イセキ",
+  "ヤンマー",
+  "NH",
+  "CASE",
+  "JD",
+  "MF",
+  "クラース",
+  OTHER_OPTION,
+] as const;
 
 // 47都道府県（北海道を先頭に）。注文可能な都道府県は AVAILABLE_PREFECTURES で制御。
 const JAPANESE_PREFECTURES = [
@@ -101,6 +133,26 @@ const AVAILABLE_PREFECTURES: readonly string[] = ["北海道"];
 function clampQuantity(value: number, maxQuantity = MAX_QUANTITY): number {
   if (!Number.isFinite(value) || value < 0) return 0;
   return Math.min(maxQuantity, Math.floor(value));
+}
+
+function displayOtherChoice(value: string, otherValue: string): string {
+  if (value !== OTHER_OPTION) return value;
+  const trimmed = otherValue.trim();
+  return trimmed ? `${OTHER_OPTION}（${trimmed}）` : OTHER_OPTION;
+}
+
+function addressLabel(
+  postalCode: string,
+  prefecture: string,
+  addressDetail: string,
+): string {
+  return [postalCode ? `〒${postalCode}` : "", prefecture, addressDetail]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalizePostalCode(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 7);
 }
 
 function getMaxQuantity(product: Product): number {
@@ -753,8 +805,8 @@ function Step2Customer({
     "addressDetail",
     "phone",
     "email",
+    "machineType",
     "machineMaker",
-    "machineModel",
   ];
 
   const minDesiredDate = tomorrowJstISO();
@@ -781,9 +833,35 @@ function Step2Customer({
       newErrors.prefecture =
         "現在は北海道のみ販売しております。本州・四国・九州への展開は順次拡大予定です。";
     }
+    if (customer.deliveryAddressDifferent) {
+      if (!customer.deliveryPostalCode.trim()) {
+        newErrors.deliveryPostalCode = "入力してください";
+      } else if (!/^\d{3}-?\d{4}$/.test(customer.deliveryPostalCode)) {
+        newErrors.deliveryPostalCode =
+          "ハイフンあり・なし両方可 (例: 123-4567)";
+      }
+      if (!customer.deliveryPrefecture.trim()) {
+        newErrors.deliveryPrefecture = "入力してください";
+      } else if (!AVAILABLE_PREFECTURES.includes(customer.deliveryPrefecture)) {
+        newErrors.deliveryPrefecture =
+          "現在は北海道のみ販売しております。本州・四国・九州への展開は順次拡大予定です。";
+      }
+      if (!customer.deliveryAddressDetail.trim()) {
+        newErrors.deliveryAddressDetail = "入力してください";
+      }
+    }
+    if (customer.machineType === OTHER_OPTION && !customer.machineTypeOther.trim()) {
+      newErrors.machineTypeOther = "その他の内容を入力してください";
+    }
+    if (customer.machineMaker === OTHER_OPTION && !customer.machineMakerOther.trim()) {
+      newErrors.machineMakerOther = "その他のメーカー名を入力してください";
+    }
     if (needsDesiredDates) {
       if (!installation.desiredDate1.trim()) {
         newErrors.desiredDate1 = "第1希望日は必須です";
+      }
+      if (!installation.desiredDate2.trim()) {
+        newErrors.desiredDate2 = "第2希望日は必須です";
       }
       for (const key of [
         "desiredDate1",
@@ -905,10 +983,10 @@ function Step2Customer({
           </p>
         </div>
 
-        {/* 市町村以下の住所 */}
+        {/* 住所 */}
         <div>
           <label htmlFor="addressDetail" className={labelClass}>
-            市町村以下の住所
+            住所
             <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
           </label>
           <input
@@ -926,6 +1004,132 @@ function Step2Customer({
             <p id="addressDetail-error" className="mt-1 text-xs text-rose-400" role="alert">
               {errors.addressDetail}
             </p>
+          )}
+        </div>
+
+        {/* 納品先住所 */}
+        <div className="rounded-xl border border-[#eadfce] bg-white p-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={customer.deliveryAddressDifferent}
+              onChange={(e) =>
+                onCustomerChange("deliveryAddressDifferent", e.target.checked)
+              }
+              className="mt-1 h-5 w-5 rounded border-[#d8c9aa] bg-white text-[#0b806b] focus:ring-2 focus:ring-[#0b806b]/30"
+            />
+            <span className="text-sm font-semibold text-[#26322f]">
+              納品先の住所が異なる場合
+            </span>
+          </label>
+          {!customer.deliveryAddressDifferent && (
+            <p className="mt-2 text-xs text-[#88928d]">
+              同じ場合は記載不要です。
+            </p>
+          )}
+          {customer.deliveryAddressDifferent && (
+            <div className="mt-4 grid gap-4">
+              <div>
+                <label htmlFor="deliveryPostalCode" className={labelClass}>
+                  納品先 郵便番号
+                  <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="deliveryPostalCode"
+                  type="text"
+                  autoComplete="shipping postal-code"
+                  value={customer.deliveryPostalCode}
+                  onChange={(e) =>
+                    onCustomerChange("deliveryPostalCode", e.target.value)
+                  }
+                  placeholder="123-4567"
+                  className={`${fieldClass("deliveryPostalCode")} max-w-xs`}
+                  aria-required="true"
+                  aria-describedby={
+                    errors.deliveryPostalCode
+                      ? "deliveryPostalCode-error"
+                      : undefined
+                  }
+                />
+                {errors.deliveryPostalCode && (
+                  <p
+                    id="deliveryPostalCode-error"
+                    className="mt-1 text-xs text-rose-400"
+                    role="alert"
+                  >
+                    {errors.deliveryPostalCode}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="deliveryPrefecture" className={labelClass}>
+                  納品先 都道府県
+                  <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+                </label>
+                <select
+                  id="deliveryPrefecture"
+                  value={customer.deliveryPrefecture}
+                  onChange={(e) =>
+                    onCustomerChange("deliveryPrefecture", e.target.value)
+                  }
+                  className={`${fieldClass("deliveryPrefecture")} max-w-xs`}
+                  aria-required="true"
+                  aria-describedby={
+                    errors.deliveryPrefecture
+                      ? "deliveryPrefecture-error"
+                      : undefined
+                  }
+                >
+                  <option value="">選択してください</option>
+                  {JAPANESE_PREFECTURES.map((pref) => (
+                    <option key={pref} value={pref}>
+                      {pref}
+                    </option>
+                  ))}
+                </select>
+                {errors.deliveryPrefecture && (
+                  <p
+                    id="deliveryPrefecture-error"
+                    className="mt-1 text-xs text-rose-400"
+                    role="alert"
+                  >
+                    {errors.deliveryPrefecture}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="deliveryAddressDetail" className={labelClass}>
+                  納品先 住所
+                  <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="deliveryAddressDetail"
+                  type="text"
+                  autoComplete="shipping address-line1"
+                  value={customer.deliveryAddressDetail}
+                  onChange={(e) =>
+                    onCustomerChange("deliveryAddressDetail", e.target.value)
+                  }
+                  placeholder="札幌市豊平区福住一条7丁目4-13"
+                  className={fieldClass("deliveryAddressDetail")}
+                  aria-required="true"
+                  aria-describedby={
+                    errors.deliveryAddressDetail
+                      ? "deliveryAddressDetail-error"
+                      : undefined
+                  }
+                />
+                {errors.deliveryAddressDetail && (
+                  <p
+                    id="deliveryAddressDetail-error"
+                    className="mt-1 text-xs text-rose-400"
+                    role="alert"
+                  >
+                    {errors.deliveryAddressDetail}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
@@ -977,26 +1181,123 @@ function Step2Customer({
           )}
         </div>
 
-        {/* 農機メーカー名 */}
+        {/* 農機種別 */}
         <div>
-          <label htmlFor="machineMaker" className={labelClass}>
-            農機メーカー名
+          <label htmlFor="machineType" className={labelClass}>
+            農機種別
             <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
           </label>
-          <input
+          <select
+            id="machineType"
+            value={customer.machineType}
+            onChange={(e) => onCustomerChange("machineType", e.target.value)}
+            className={`${fieldClass("machineType")} max-w-sm`}
+            aria-required="true"
+            aria-describedby={errors.machineType ? "machineType-error" : undefined}
+          >
+            <option value="">選択してください</option>
+            {MACHINE_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+          {errors.machineType && (
+            <p id="machineType-error" className="mt-1 text-xs text-rose-400" role="alert">
+              {errors.machineType}
+            </p>
+          )}
+          {customer.machineType === OTHER_OPTION && (
+            <div className="mt-3">
+              <label htmlFor="machineTypeOther" className={labelClass}>
+                その他の農機種別
+                <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+              </label>
+              <input
+                id="machineTypeOther"
+                type="text"
+                value={customer.machineTypeOther}
+                onChange={(e) =>
+                  onCustomerChange("machineTypeOther", e.target.value)
+                }
+                placeholder="例: 防除機"
+                className={`${fieldClass("machineTypeOther")} max-w-sm`}
+                aria-required="true"
+                aria-describedby={
+                  errors.machineTypeOther ? "machineTypeOther-error" : undefined
+                }
+              />
+              {errors.machineTypeOther && (
+                <p
+                  id="machineTypeOther-error"
+                  className="mt-1 text-xs text-rose-400"
+                  role="alert"
+                >
+                  {errors.machineTypeOther}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 農機メーカー */}
+        <div>
+          <label htmlFor="machineMaker" className={labelClass}>
+            農機メーカー
+            <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+          </label>
+          <select
             id="machineMaker"
-            type="text"
             value={customer.machineMaker}
             onChange={(e) => onCustomerChange("machineMaker", e.target.value)}
-            placeholder="クボタ、ヤンマー、イセキ など"
-            className={fieldClass("machineMaker")}
+            className={`${fieldClass("machineMaker")} max-w-sm`}
             aria-required="true"
             aria-describedby={errors.machineMaker ? "machineMaker-error" : undefined}
-          />
+          >
+            <option value="">選択してください</option>
+            {MACHINE_MAKERS.map((maker) => (
+              <option key={maker} value={maker}>
+                {maker}
+              </option>
+            ))}
+          </select>
           {errors.machineMaker && (
             <p id="machineMaker-error" className="mt-1 text-xs text-rose-400" role="alert">
               {errors.machineMaker}
             </p>
+          )}
+          {customer.machineMaker === OTHER_OPTION && (
+            <div className="mt-3">
+              <label htmlFor="machineMakerOther" className={labelClass}>
+                その他のメーカー名
+                <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+              </label>
+              <input
+                id="machineMakerOther"
+                type="text"
+                value={customer.machineMakerOther}
+                onChange={(e) =>
+                  onCustomerChange("machineMakerOther", e.target.value)
+                }
+                placeholder="メーカー名を入力"
+                className={`${fieldClass("machineMakerOther")} max-w-sm`}
+                aria-required="true"
+                aria-describedby={
+                  errors.machineMakerOther
+                    ? "machineMakerOther-error"
+                    : undefined
+                }
+              />
+              {errors.machineMakerOther && (
+                <p
+                  id="machineMakerOther-error"
+                  className="mt-1 text-xs text-rose-400"
+                  role="alert"
+                >
+                  {errors.machineMakerOther}
+                </p>
+              )}
+            </div>
           )}
         </div>
 
@@ -1004,7 +1305,7 @@ function Step2Customer({
         <div>
           <label htmlFor="machineModel" className={labelClass}>
             農機の機種名・型番
-            <span className="text-rose-400 ml-1" aria-hidden="true">*</span>
+            <span className="text-xs text-[#88928d] font-normal ml-2">任意</span>
           </label>
           <input
             id="machineModel"
@@ -1013,7 +1314,6 @@ function Step2Customer({
             onChange={(e) => onCustomerChange("machineModel", e.target.value)}
             placeholder="NW8SQZAT など"
             className={fieldClass("machineModel")}
-            aria-required="true"
             aria-describedby={errors.machineModel ? "machineModel-error" : undefined}
           />
           {errors.machineModel && (
@@ -1029,7 +1329,7 @@ function Step2Customer({
             <legend className="px-2 text-sm font-semibold text-[#394842]">
               取付ご希望日
               <span className="text-xs text-[#88928d] font-normal ml-2">
-                第1希望は必須・第2/第3は任意
+                第1/第2希望は必須・第3希望は任意
               </span>
             </legend>
             <p className="mt-2 text-xs leading-relaxed text-[#607069]">
@@ -1040,7 +1340,7 @@ function Step2Customer({
               {(
                 [
                   { key: "desiredDate1", label: "第1希望", required: true },
-                  { key: "desiredDate2", label: "第2希望", required: false },
+                  { key: "desiredDate2", label: "第2希望", required: true },
                   { key: "desiredDate3", label: "第3希望", required: false },
                 ] as const
               ).map(({ key, label, required }) => (
@@ -1298,6 +1598,27 @@ function Step4Confirm({
   const installationEligible = lines.some((l) =>
     hasInstallationService(l.product.id),
   );
+  const customerAddressDisplay = addressLabel(
+    customer.postalCode,
+    customer.prefecture,
+    customer.addressDetail,
+  );
+  const deliveryAddressDisplay = customer.deliveryAddressDifferent
+    ? addressLabel(
+        customer.deliveryPostalCode,
+        customer.deliveryPrefecture,
+        customer.deliveryAddressDetail,
+      )
+    : "基本住所と同じ";
+  const machineTypeDisplay = displayOtherChoice(
+    customer.machineType,
+    customer.machineTypeOther,
+  );
+  const machineMakerDisplay = displayOtherChoice(
+    customer.machineMaker,
+    customer.machineMakerOther,
+  );
+  const machineModelDisplay = customer.machineModel.trim() || "未入力";
 
   const dlItemClass = "flex justify-between items-start gap-4 py-2";
   const dtClass = "text-sm text-[#607069] shrink-0";
@@ -1413,7 +1734,13 @@ function Step4Confirm({
           <div className={dlItemClass}>
             <dt className={dtClass}>住所</dt>
             <dd className={`${ddClass} max-w-xs`}>
-              {customer.prefecture} {customer.addressDetail}
+              {customerAddressDisplay}
+            </dd>
+          </div>
+          <div className={dlItemClass}>
+            <dt className={dtClass}>納品先住所</dt>
+            <dd className={`${ddClass} max-w-xs`}>
+              {deliveryAddressDisplay}
             </dd>
           </div>
           <div className={dlItemClass}>
@@ -1425,12 +1752,16 @@ function Step4Confirm({
             <dd className={`${ddClass} break-all`}>{customer.email}</dd>
           </div>
           <div className={dlItemClass}>
+            <dt className={dtClass}>農機種別</dt>
+            <dd className={ddClass}>{machineTypeDisplay}</dd>
+          </div>
+          <div className={dlItemClass}>
             <dt className={dtClass}>農機メーカー</dt>
-            <dd className={ddClass}>{customer.machineMaker}</dd>
+            <dd className={ddClass}>{machineMakerDisplay}</dd>
           </div>
           <div className={dlItemClass}>
             <dt className={dtClass}>機種名・型番</dt>
-            <dd className={ddClass}>{customer.machineModel}</dd>
+            <dd className={ddClass}>{machineModelDisplay}</dd>
           </div>
           {customer.notes && (
             <div className={dlItemClass}>
@@ -1528,6 +1859,12 @@ export default function OrderForm({
   const [agreement, setAgreement] = useState<AgreementState>(EMPTY_AGREEMENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const postalLookupRef = useRef<
+    Record<"postalCode" | "deliveryPostalCode", string>
+  >({
+    postalCode: "",
+    deliveryPostalCode: "",
+  });
   const orderProducts = useMemo(
     () => [...mainProducts, ...optionProducts, ...donationProducts],
     [mainProducts, optionProducts, donationProducts],
@@ -1558,7 +1895,52 @@ export default function OrderForm({
     value: string | boolean,
   ) => {
     setCustomer((prev) => ({ ...prev, [field]: value }));
+    if (typeof value !== "string") return;
+    if (field === "postalCode" || field === "deliveryPostalCode") {
+      void lookupPostalAddress(field, value);
+    }
   };
+
+  async function lookupPostalAddress(
+    field: "postalCode" | "deliveryPostalCode",
+    value: string,
+  ) {
+    const postalCode = normalizePostalCode(value);
+    if (postalCode.length !== 7) {
+      postalLookupRef.current[field] = "";
+      return;
+    }
+    if (postalLookupRef.current[field] === postalCode) return;
+    postalLookupRef.current[field] = postalCode;
+
+    try {
+      const response = await fetch(
+        `/api/postal-address?zipcode=${encodeURIComponent(postalCode)}`,
+      );
+      if (!response.ok) return;
+      const data = (await response.json()) as PostalAddressLookupResult;
+      setCustomer((prev) => {
+        if (field === "postalCode") {
+          if (normalizePostalCode(prev.postalCode) !== postalCode) return prev;
+          return {
+            ...prev,
+            prefecture: data.prefecture,
+            addressDetail: data.addressDetail,
+          };
+        }
+        if (normalizePostalCode(prev.deliveryPostalCode) !== postalCode) {
+          return prev;
+        }
+        return {
+          ...prev,
+          deliveryPrefecture: data.prefecture,
+          deliveryAddressDetail: data.addressDetail,
+        };
+      });
+    } catch {
+      postalLookupRef.current[field] = "";
+    }
+  }
 
   const handleInstallationChange = (
     field: keyof InstallationOptions,
@@ -1593,6 +1975,27 @@ export default function OrderForm({
       installation.selfInstall,
     );
     const total = calcLinesTotal(lines) - totalDiscount;
+    const customerAddressText = addressLabel(
+      customer.postalCode,
+      customer.prefecture,
+      customer.addressDetail,
+    );
+    const deliveryAddressText = customer.deliveryAddressDifferent
+      ? addressLabel(
+          customer.deliveryPostalCode,
+          customer.deliveryPrefecture,
+          customer.deliveryAddressDetail,
+        )
+      : "基本住所と同じ";
+    const machineTypeText = displayOtherChoice(
+      customer.machineType,
+      customer.machineTypeOther,
+    );
+    const machineMakerText = displayOtherChoice(
+      customer.machineMaker,
+      customer.machineMakerOther,
+    );
+    const machineModelText = customer.machineModel.trim() || "未入力";
     const confirmed = window.confirm(
       [
         "この内容で注文手続きへ進みますか？",
@@ -1609,7 +2012,9 @@ export default function OrderForm({
         `お名前: ${customer.name}`,
         `メール: ${customer.email}`,
         `電話: ${customer.phone}`,
-        `配送先: ${customer.postalCode} ${customer.prefecture} ${customer.addressDetail}`,
+        `住所: ${customerAddressText}`,
+        `納品先: ${deliveryAddressText}`,
+        `農機: ${machineTypeText} / ${machineMakerText} / ${machineModelText}`,
         ...(needsDesiredDates
           ? [
               `取付ご希望日: ${installation.desiredDate1}` +
