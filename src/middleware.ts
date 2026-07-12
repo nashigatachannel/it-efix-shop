@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const ADMIN_COOKIE = "efix_admin";
 const PARTNER_COOKIE = "efix_partner";
@@ -34,7 +35,17 @@ async function isValidJwt(
   }
 }
 
-export async function middleware(request: NextRequest) {
+const isClerkAccountRoute = createRouteMatcher(["/account(.*)", "/api/account(.*)"]);
+
+/**
+ * 既存の admin/partner Cookie(JWT)認証ロジック。1文字も挙動を変えていない。
+ * Clerk 導入前は `middleware` としてそのままエクスポートされていた関数の中身。
+ * admin/partner/distributor 以外の pathname では常に NextResponse.next() を返す
+ * (=何もしない)ので、Clerk 側の処理を妨げない。
+ */
+async function legacyAdminPartnerRouting(
+  request: NextRequest,
+): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Legacy distributor URLs are consolidated into the partner area.
@@ -95,12 +106,23 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
+/**
+ * Clerk (顧客向け認証) と既存の admin/partner Cookie 認証を同一 middleware で共存させる。
+ * clerkMiddleware のハンドラ内で legacyAdminPartnerRouting をそのまま呼び出すことで、
+ * admin/partner/distributor の挙動を完全に維持しつつ、Clerk のセッション処理を全ルートに適用する。
+ * /account 配下のみ auth.protect() でログイン必須にする(他のルートは全て公開のまま)。
+ */
+export default clerkMiddleware(async (auth, request) => {
+  if (isClerkAccountRoute(request)) {
+    await auth.protect();
+  }
+  return legacyAdminPartnerRouting(request);
+});
+
 export const config = {
   matcher: [
-    "/admin/:path*",
-    "/api/admin/:path*",
-    "/partner/:path*",
-    "/api/partner/:path*",
-    "/distributor/:path*",
+    // Clerk 公式推奨マッチャー: 静的ファイル(拡張子付きURL)と _next を除く全ルートで実行。
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
   ],
 };

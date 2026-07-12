@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@clerk/localizations": "^4.13.2",
+    "@clerk/nextjs": "^7.5.17",
     "@stripe/stripe-js": "^9.0.0",
     "exceljs": "^4.4.0",
     "googleapis": "^171.4.0",

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { UserButton, useUser } from "@clerk/nextjs";
 
 interface NavItem {
   href: string;
@@ -52,11 +53,13 @@ function navLinkClass(active: boolean, hiddenClass = ""): string {
 
 export default function Header() {
   const pathname = usePathname();
+  const { isLoaded, isSignedIn } = useUser();
   const partnerActive =
     pathname === "/partner" ||
     pathname.startsWith("/partner/") ||
     pathname === "/dealer" ||
     pathname.startsWith("/dealer/");
+  const accountActive = pathname === "/account" || pathname.startsWith("/account/");
 
   return (
     <header className="sticky top-0 z-50 border-b border-[#eadfce] bg-[#fbf7ef]/90 backdrop-blur-md">
@@ -97,6 +100,26 @@ export default function Header() {
           >
             販売店ログイン
           </Link>
+          {isLoaded && isSignedIn && (
+            <>
+              <Link
+                href="/account"
+                aria-current={accountActive ? "page" : undefined}
+                className={navLinkClass(accountActive, "hidden sm:inline")}
+              >
+                マイページ
+              </Link>
+              <UserButton />
+            </>
+          )}
+          {isLoaded && !isSignedIn && (
+            <Link
+              href="/sign-in"
+              className="hidden text-sm font-semibold text-[#607069] transition-colors hover:text-[#0b806b] sm:inline"
+            >
+              ログイン
+            </Link>
+          )}
         </nav>
       </div>
     </header>
