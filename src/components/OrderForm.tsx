@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -1528,6 +1529,51 @@ export default function OrderForm({
   const [agreement, setAgreement] = useState<AgreementState>(EMPTY_AGREEMENT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { user, isLoaded: isUserLoaded } = useUser();
+  const [isProfileApplied, setIsProfileApplied] = useState(false);
+
+  // ログイン中ならマイページのお客様情報をフォームへ自動入力する。
+  // ユーザーが既に入力済みのフィールドは上書きしない。
+  useEffect(() => {
+    if (!isUserLoaded || !user || isProfileApplied) return;
+    setIsProfileApplied(true);
+
+    fetch("/api/account/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (data: {
+          profile?: Partial<CustomerInfo>;
+          email?: string;
+        } | null) => {
+          if (!data) return;
+          setCustomer((prev) => {
+            const next = { ...prev };
+            const profile = data.profile ?? {};
+            for (const key of [
+              "name",
+              "phone",
+              "postalCode",
+              "prefecture",
+              "addressDetail",
+              "machineMaker",
+              "machineModel",
+            ] as const) {
+              const value = profile[key];
+              if (!next[key] && typeof value === "string" && value) {
+                next[key] = value;
+              }
+            }
+            if (!next.email && data.email) {
+              next.email = data.email;
+            }
+            return next;
+          });
+        },
+      )
+      .catch(() => {
+        // プロフィール取得失敗は無視（手入力にフォールバック）
+      });
+  }, [isUserLoaded, user, isProfileApplied]);
   const orderProducts = useMemo(
     () => [...mainProducts, ...optionProducts, ...donationProducts],
     [mainProducts, optionProducts, donationProducts],

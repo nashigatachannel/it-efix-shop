@@ -20,6 +20,8 @@ import {
   INVOICE_CUSTOM_FIELDS,
 } from "@/lib/invoice-config";
 import { getCurrentPartner } from "@/lib/partner-auth";
+import { auth } from "@clerk/nextjs/server";
+import { sanitizeProfile, saveCustomerProfile } from "@/lib/customer-profile";
 
 interface CustomerInfo {
   name: string;
@@ -332,6 +334,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       desiredDate3: installation?.desiredDate3 ?? "",
     },
   });
+
+  // ログイン中の顧客なら、入力内容をマイページの「お客様情報」に自動登録する。
+  // 保存失敗は注文フローに影響させない。
+  try {
+    const { userId } = await auth();
+    if (userId) {
+      await saveCustomerProfile(
+        userId,
+        sanitizeProfile({
+          name: customer.name,
+          phone: customer.phone,
+          postalCode: customer.postalCode,
+          prefecture: customer.prefecture ?? "",
+          addressDetail: customer.addressDetail ?? customer.address ?? "",
+          machineMaker: customer.machineMaker,
+          machineModel: customer.machineModel,
+        }),
+      );
+    }
+  } catch (err) {
+    console.error("Failed to auto-save customer profile on checkout:", err);
+  }
 
   return NextResponse.json({ url: session.url });
 }

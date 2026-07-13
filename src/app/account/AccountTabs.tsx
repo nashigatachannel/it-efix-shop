@@ -12,10 +12,21 @@ interface AccountOrderItem {
   customerName: string;
 }
 
-type TabKey = "orders" | "settings";
+interface CustomerProfile {
+  name: string;
+  phone: string;
+  postalCode: string;
+  prefecture: string;
+  addressDetail: string;
+  machineMaker: string;
+  machineModel: string;
+}
+
+type TabKey = "orders" | "profile" | "settings";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "orders", label: "注文履歴" },
+  { key: "profile", label: "お客様情報" },
   { key: "settings", label: "アカウント設定" },
 ];
 
@@ -308,6 +319,175 @@ function OrdersPanel() {
   );
 }
 
+const PROFILE_FIELDS: Array<{
+  key: keyof CustomerProfile;
+  label: string;
+  placeholder: string;
+}> = [
+  { key: "name", label: "お名前", placeholder: "山田 太郎" },
+  { key: "phone", label: "電話番号", placeholder: "090-1234-5678" },
+  { key: "postalCode", label: "郵便番号", placeholder: "062-0041" },
+  { key: "prefecture", label: "都道府県", placeholder: "北海道" },
+  {
+    key: "addressDetail",
+    label: "市町村以下の住所（お届け先）",
+    placeholder: "札幌市豊平区福住一条７丁目4-13",
+  },
+  { key: "machineMaker", label: "農機メーカー", placeholder: "クボタ" },
+  { key: "machineModel", label: "農機型式", placeholder: "SL60" },
+];
+
+function ProfilePanel() {
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/account/profile")
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(data?.error ?? "お客様情報の取得に失敗しました。");
+        }
+        return res.json() as Promise<{
+          profile: CustomerProfile;
+          email: string;
+        }>;
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setProfile(data.profile);
+          setEmail(data.email);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "お客様情報の取得に失敗しました。",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const save = async () => {
+    if (!profile) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/account/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(data?.error ?? "お客様情報の保存に失敗しました。");
+      }
+      setSavedAt(Date.now());
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "お客様情報の保存に失敗しました。",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (error && profile === null) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (profile === null) {
+    return (
+      <div className="rounded-lg border border-stone-200 bg-white p-6 text-center text-sm text-stone-500 shadow-sm">
+        読み込み中...
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-stone-200 bg-white p-6 shadow-sm">
+      <p className="text-sm text-stone-600">
+        ここに登録した内容は、次回のご注文フォームに自動で入力されます。
+        ご注文時に入力・変更した内容も自動でこちらに反映されます。
+      </p>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <label className="block text-xs font-bold text-stone-600 sm:col-span-2">
+          メールアドレス（ログインアカウント）
+          <input
+            type="text"
+            value={email}
+            disabled
+            className="mt-1 w-full rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-normal text-stone-500"
+          />
+        </label>
+
+        {PROFILE_FIELDS.map((field) => (
+          <label
+            key={field.key}
+            className={[
+              "block text-xs font-bold text-stone-600",
+              field.key === "addressDetail" ? "sm:col-span-2" : "",
+            ].join(" ")}
+          >
+            {field.label}
+            <input
+              type="text"
+              value={profile[field.key]}
+              placeholder={field.placeholder}
+              onChange={(event) =>
+                setProfile((prev) =>
+                  prev ? { ...prev, [field.key]: event.target.value } : prev,
+                )
+              }
+              className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-normal text-stone-900 focus:border-[#0b806b] focus:outline-none"
+            />
+          </label>
+        ))}
+      </div>
+
+      {error && (
+        <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-5 flex items-center justify-end gap-3">
+        {savedAt && !saving && (
+          <span className="text-xs text-emerald-700">保存しました</span>
+        )}
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded-md bg-[#0b806b] px-5 py-2 text-sm font-bold text-white hover:bg-[#0a6f5d] disabled:opacity-50"
+        >
+          {saving ? "保存中..." : "保存する"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AccountTabs() {
   const [activeTab, setActiveTab] = useState<TabKey>("orders");
 
@@ -339,6 +519,7 @@ export default function AccountTabs() {
 
       <div className="mt-6">
         {activeTab === "orders" && <OrdersPanel />}
+        {activeTab === "profile" && <ProfilePanel />}
         {activeTab === "settings" && (
           <div className="flex justify-center">
             <UserProfile routing="hash" />
