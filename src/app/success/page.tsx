@@ -11,6 +11,7 @@ interface SessionStatus {
   amount_total: number | null;
   customer_email: string;
   session_id?: string;
+  serial_number?: number | null;
 }
 
 function SuccessContent() {
@@ -82,6 +83,22 @@ function SuccessContent() {
               発送準備が整いましたら改めてご連絡いたします。
             </p>
           )}
+
+          <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 text-sm mb-4 text-left">
+            <p className="font-semibold text-slate-300 mb-1">注文番号</p>
+            {status?.serial_number ? (
+              <p className="text-2xl font-black text-emerald-400">
+                {status.serial_number}
+              </p>
+            ) : (
+              <p className="text-slate-400">
+                発行処理中です。マイページの注文履歴でご確認いただけます。
+              </p>
+            )}
+            <p className="mt-2 text-xs text-slate-500">
+              お問い合わせ・注文キャンセルの際に必要になります。お控えください。
+            </p>
+          </div>
 
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 text-sm text-slate-400 mb-8 text-left">
             <p className="font-semibold text-slate-300 mb-2">お問い合わせ</p>

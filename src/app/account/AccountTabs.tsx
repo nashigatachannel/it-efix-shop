@@ -313,6 +313,16 @@ function OrdersPanel() {
           onClose={() => setReceiptOrder(null)}
         />
       )}
+      <p className="border-t border-stone-200 px-4 py-3 text-xs text-stone-500">
+        ご注文のキャンセルは{" "}
+        <a
+          href="/orders/cancel"
+          className="font-bold text-[#0b806b] hover:underline"
+        >
+          こちら
+        </a>
+        （上記の注文番号とご登録のメールアドレスまたは電話番号が必要です）
+      </p>
     </div>
   );
 }
