@@ -62,7 +62,6 @@ function ReceiptModal({
   onClose: () => void;
 }) {
   const [addressee, setAddressee] = useState(order.customerName);
-  const [note, setNote] = useState(`${order.model || "E-FIX製品"} 代金`);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -77,26 +76,25 @@ function ReceiptModal({
       const query = new URLSearchParams({
         orderId: order.orderId,
         to: addressee.trim(),
-        note: note.trim(),
       });
       const res = await fetch(`/api/account/orders/receipt?${query}`);
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as
           | { error?: string }
           | null;
-        throw new Error(data?.error ?? "領収書の発行に失敗しました。");
+        throw new Error(data?.error ?? "適格請求書の発行に失敗しました。");
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `receipt-${order.orderId}.pdf`;
+      link.download = `invoice-${order.orderId}.pdf`;
       link.click();
       URL.revokeObjectURL(url);
       onClose();
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "領収書の発行に失敗しました。",
+        err instanceof Error ? err.message : "適格請求書の発行に失敗しました。",
       );
     } finally {
       setDownloading(false);
@@ -108,14 +106,14 @@ function ReceiptModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="領収書の発行"
+      aria-label="適格請求書の発行"
       onClick={onClose}
     >
       <div
         className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3 className="text-base font-bold text-stone-900">領収書の発行</h3>
+        <h3 className="text-base font-bold text-stone-900">適格請求書の発行</h3>
         <p className="mt-1 text-xs text-stone-500">
           注文番号 {order.orderId}・{formatYen(order.amountTotal)}（税込）
         </p>
@@ -131,19 +129,8 @@ function ReceiptModal({
           />
         </label>
         <p className="mt-1 text-right text-xs text-stone-400">※「様」は自動で付きます</p>
-
-        <label className="mt-3 block text-xs font-bold text-stone-600">
-          但し書き
-          <input
-            type="text"
-            value={note}
-            maxLength={80}
-            onChange={(event) => setNote(event.target.value)}
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-normal text-stone-900 focus:border-[#0b806b] focus:outline-none"
-          />
-        </label>
-        <p className="mt-1 text-right text-xs text-stone-400">
-          ※「但し」「として」は自動で付きます
+        <p className="mt-2 text-xs text-stone-500">
+          商品の内訳・金額・支払方法はご注文内容から自動で記載されます。
         </p>
 
         {error && (
@@ -259,7 +246,7 @@ function OrdersPanel() {
               <th className="px-4 py-3">商品</th>
               <th className="px-4 py-3 text-right">金額（税込）</th>
               <th className="px-4 py-3">状態</th>
-              <th className="px-4 py-3">領収書</th>
+              <th className="px-4 py-3">適格請求書</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
@@ -296,7 +283,7 @@ function OrdersPanel() {
                       onClick={() => setReceiptOrder(order)}
                       className="inline-flex rounded-md bg-[#0b806b] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0a6f5d]"
                     >
-                      宛名入り領収書
+                      宛名入り適格請求書
                     </button>
                   ) : (
                     <span className="text-xs text-stone-400">—</span>

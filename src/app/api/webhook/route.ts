@@ -53,9 +53,42 @@ async function getNextSerialNumber(
   return maxSerial + 1;
 }
 
-function paymentMethodLabel(session: Stripe.Checkout.Session): string {
+/**
+ * 実際に使われた決済手段を charge から判定する。
+ * session.payment_method_types は「選択肢の一覧」なので、card と customer_balance を
+ * 併記している現行 Checkout ではカード決済でも「銀行振込」と誤記される。
+ */
+async function resolvePaymentMethodLabel(
+  session: Stripe.Checkout.Session,
+): Promise<string> {
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : (session.payment_intent?.id ?? null);
+  if (paymentIntentId) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        paymentIntentId,
+        { expand: ["latest_charge"] },
+      );
+      const charge = paymentIntent.latest_charge;
+      const methodType =
+        charge && typeof charge === "object"
+          ? charge.payment_method_details?.type
+          : undefined;
+      if (methodType === "card") return "カード";
+      if (methodType === "customer_balance") return "銀行振込";
+      if (methodType) return methodType;
+    } catch (err) {
+      console.error(
+        `Failed to resolve payment method for session ${session.id}:`,
+        err,
+      );
+    }
+  }
+  // charge がまだ無い＝銀行振込の入金待ち（async フロー）
+  if (session.payment_status === "unpaid") return "銀行振込";
   const types = session.payment_method_types ?? [];
-  if (types.includes("customer_balance")) return "銀行振込";
   if (types.includes("card")) return "カード";
   return types.join(",") || "不明";
 }
@@ -114,6 +147,7 @@ function buildSheetRow(
   session: Stripe.Checkout.Session,
   serialNumber: number,
   eventType: string,
+  paymentMethod: string,
 ): (string | number)[] {
   const metadata = session.metadata ?? {};
   const requestInvoice =
@@ -131,7 +165,7 @@ function buildSheetRow(
     toJstDateString(new Date()),
     session.id,
     paymentStatusForEvent(session, eventType),
-    paymentMethodLabel(session),
+    paymentMethod,
     modelDisplay,
     session.amount_total ?? "",
     metadata.customerName ?? "",
@@ -182,7 +216,8 @@ async function upsertWebOrder(
   const serialNumber = Number.isFinite(existingSerial)
     ? existingSerial
     : await getNextSerialNumber(sheets);
-  const row = buildSheetRow(session, serialNumber, eventType);
+  const paymentMethod = await resolvePaymentMethodLabel(session);
+  const row = buildSheetRow(session, serialNumber, eventType, paymentMethod);
 
   if (existing) {
     const current = Array.from(
