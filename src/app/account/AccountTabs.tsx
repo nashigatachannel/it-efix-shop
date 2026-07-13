@@ -18,8 +18,6 @@ interface CustomerProfile {
   postalCode: string;
   prefecture: string;
   addressDetail: string;
-  machineMaker: string;
-  machineModel: string;
 }
 
 type TabKey = "orders" | "profile" | "settings";
@@ -333,8 +331,6 @@ const PROFILE_FIELDS: Array<{
     label: "市町村以下の住所（お届け先）",
     placeholder: "札幌市豊平区福住一条７丁目4-13",
   },
-  { key: "machineMaker", label: "農機メーカー", placeholder: "クボタ" },
-  { key: "machineModel", label: "農機型式", placeholder: "SL60" },
 ];
 
 function ProfilePanel() {

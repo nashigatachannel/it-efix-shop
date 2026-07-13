@@ -1555,8 +1555,6 @@ export default function OrderForm({
               "postalCode",
               "prefecture",
               "addressDetail",
-              "machineMaker",
-              "machineModel",
             ] as const) {
               const value = profile[key];
               if (!next[key] && typeof value === "string" && value) {

@@ -348,8 +348,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           postalCode: customer.postalCode,
           prefecture: customer.prefecture ?? "",
           addressDetail: customer.addressDetail ?? customer.address ?? "",
-          machineMaker: customer.machineMaker,
-          machineModel: customer.machineModel,
         }),
       );
     }

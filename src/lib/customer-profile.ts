@@ -11,8 +11,6 @@ export interface CustomerProfile {
   postalCode: string;
   prefecture: string;
   addressDetail: string;
-  machineMaker: string;
-  machineModel: string;
 }
 
 export const EMPTY_PROFILE: CustomerProfile = {
@@ -21,8 +19,6 @@ export const EMPTY_PROFILE: CustomerProfile = {
   postalCode: "",
   prefecture: "",
   addressDetail: "",
-  machineMaker: "",
-  machineModel: "",
 };
 
 const FIELD_MAX_LENGTH: Record<keyof CustomerProfile, number> = {
@@ -31,8 +27,6 @@ const FIELD_MAX_LENGTH: Record<keyof CustomerProfile, number> = {
   postalCode: 10,
   prefecture: 10,
   addressDetail: 120,
-  machineMaker: 60,
-  machineModel: 60,
 };
 
 /**
