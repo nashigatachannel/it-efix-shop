@@ -68,7 +68,8 @@ function CancelOrderContent() {
         <h1 className="mt-2 text-3xl font-black text-white">注文キャンセル</h1>
         <p className="mt-4 text-sm leading-6 text-slate-400">
           通常注文は注文後1時間以内に限り、この画面からキャンセルできます。
-          注文番号が分かる場合は注文番号とメールまたは電話番号を入力してください。
+          注文番号とメールまたは電話番号を入力してください。
+          注文番号はマイページの注文履歴で確認できます。
         </p>
 
         <form
@@ -88,7 +89,7 @@ function CancelOrderContent() {
                   id="serialNumber"
                   value={serialNumber}
                   onChange={(event) => setSerialNumber(event.target.value)}
-                  placeholder="例: 123"
+                  placeholder="例: 51423"
                   className="h-11 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 text-white outline-none focus:border-emerald-500"
                   required
                 />

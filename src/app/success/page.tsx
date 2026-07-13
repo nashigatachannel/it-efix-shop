@@ -11,7 +11,7 @@ interface SessionStatus {
   amount_total: number | null;
   customer_email: string;
   session_id?: string;
-  serial_number?: number | null;
+  serial_number?: string | null;
 }
 
 function SuccessContent() {

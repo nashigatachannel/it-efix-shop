@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSheetsClient, SPREADSHEET_ID, WEB_ORDERS_SHEET } from "@/lib/sheets";
+import { fromDisplayOrderNumber } from "@/lib/order-number";
 
 export const dynamic = "force-dynamic";
 
@@ -77,15 +78,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     range: sheetRange(WEB_ORDERS_SHEET, "A2:S"),
   });
   const rows = res.data.values ?? [];
+  // 顧客が入力するのは5桁の表示用注文番号。復号した通し番号と、
+  // 旧形式(生の通し番号)の両方をA列と突合できるようにしておく。
+  const decodedSerial = fromDisplayOrderNumber(serialNumber);
   const index = rows.findIndex((row) => {
     const rowSerial = String(row[0] ?? "").trim();
     const rowSessionId = String(row[3] ?? "").trim();
     const rowEmail = normalize(String(row[9] ?? ""));
     const rowPhone = normalize(String(row[10] ?? ""));
     if (sessionId) return rowSessionId === sessionId;
+    const serialMatches =
+      rowSerial === serialNumber ||
+      (decodedSerial !== null && rowSerial === String(decodedSerial));
     return (
-      rowSerial === serialNumber &&
-      (rowEmail === emailOrPhone || rowPhone === emailOrPhone)
+      serialMatches && (rowEmail === emailOrPhone || rowPhone === emailOrPhone)
     );
   });
 

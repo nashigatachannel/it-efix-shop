@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { fetchWebOrders, type WebOrderRow } from "@/lib/sheets";
+import { webOrderDisplayId } from "@/lib/order-number";
 
 export const runtime = "nodejs";
 
@@ -30,8 +31,7 @@ function localDevWebhookHint(): string | null {
 
 function toOrderItem(row: WebOrderRow): AccountOrderItem {
   return {
-    orderId:
-      row.serialNumber !== null ? String(row.serialNumber) : row.sessionId,
+    orderId: webOrderDisplayId(row.serialNumber, row.sessionId),
     orderedAt: row.orderedAt,
     model: row.model,
     amountTotal: row.amountTotal,
