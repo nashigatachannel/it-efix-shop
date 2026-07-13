@@ -9,7 +9,6 @@ interface AccountOrderItem {
   model: string;
   amountTotal: number | null;
   paymentStatus: string;
-  receiptUrl: string | null;
   customerName: string;
 }
 
@@ -282,30 +281,17 @@ function OrdersPanel() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {order.paymentStatus === "paid" && (
-                      <button
-                        type="button"
-                        onClick={() => setReceiptOrder(order)}
-                        className="inline-flex rounded-md bg-[#0b806b] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0a6f5d]"
-                      >
-                        宛名入り領収書
-                      </button>
-                    )}
-                    {order.receiptUrl && (
-                      <a
-                        href={order.receiptUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex rounded-md border border-[#0b806b]/40 bg-white px-3 py-1.5 text-xs font-bold text-[#0b806b] hover:bg-[#0b806b] hover:text-white"
-                      >
-                        Stripe領収書
-                      </a>
-                    )}
-                    {order.paymentStatus !== "paid" && !order.receiptUrl && (
-                      <span className="text-xs text-stone-400">—</span>
-                    )}
-                  </div>
+                  {order.paymentStatus === "paid" ? (
+                    <button
+                      type="button"
+                      onClick={() => setReceiptOrder(order)}
+                      className="inline-flex rounded-md bg-[#0b806b] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0a6f5d]"
+                    >
+                      宛名入り領収書
+                    </button>
+                  ) : (
+                    <span className="text-xs text-stone-400">—</span>
+                  )}
                 </td>
               </tr>
             ))}

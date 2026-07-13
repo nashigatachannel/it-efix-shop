@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import type Stripe from "stripe";
-import { stripe } from "@/lib/stripe";
 import { fetchWebOrders, type WebOrderRow } from "@/lib/sheets";
 
 export const runtime = "nodejs";
@@ -12,7 +10,6 @@ export interface AccountOrderItem {
   model: string;
   amountTotal: number | null;
   paymentStatus: string;
-  receiptUrl: string | null;
   customerName: string;
 }
 
@@ -31,45 +28,7 @@ function localDevWebhookHint(): string | null {
   );
 }
 
-/**
- * Checkout Session から領収書URLを抽出する。
- * カード決済: charge.receipt_url / それ以外(銀行振込等): invoice.hosted_invoice_url にフォールバック。
- */
-function extractReceiptUrl(session: Stripe.Checkout.Session): string | null {
-  const paymentIntent = session.payment_intent;
-  if (paymentIntent && typeof paymentIntent === "object") {
-    const charge = paymentIntent.latest_charge;
-    if (charge && typeof charge === "object" && charge.receipt_url) {
-      return charge.receipt_url;
-    }
-  }
-  const invoice = session.invoice;
-  if (invoice && typeof invoice === "object" && invoice.hosted_invoice_url) {
-    return invoice.hosted_invoice_url;
-  }
-  return null;
-}
-
-/**
- * Stripeからの領収書URL取得は失敗しても注文一覧自体は返す(nullで続行)。
- */
-async function fetchReceiptUrl(sessionId: string): Promise<string | null> {
-  if (!sessionId) return null;
-  try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["payment_intent.latest_charge", "invoice"],
-    });
-    return extractReceiptUrl(session);
-  } catch (err) {
-    console.error(
-      `Failed to fetch Stripe receipt for account order (session=${sessionId}):`,
-      err,
-    );
-    return null;
-  }
-}
-
-function toOrderItem(row: WebOrderRow, receiptUrl: string | null): AccountOrderItem {
+function toOrderItem(row: WebOrderRow): AccountOrderItem {
   return {
     orderId:
       row.serialNumber !== null ? String(row.serialNumber) : row.sessionId,
@@ -77,7 +36,6 @@ function toOrderItem(row: WebOrderRow, receiptUrl: string | null): AccountOrderI
     model: row.model,
     amountTotal: row.amountTotal,
     paymentStatus: row.paymentStatus,
-    receiptUrl,
     customerName: row.customerName,
   };
 }
@@ -118,12 +76,7 @@ export async function GET(): Promise<NextResponse> {
     (row) => row.customerEmail.trim().toLowerCase() === normalizedEmail,
   );
 
-  const orders = await Promise.all(
-    myOrders.map(async (row) => {
-      const receiptUrl = await fetchReceiptUrl(row.sessionId);
-      return toOrderItem(row, receiptUrl);
-    }),
-  );
+  const orders = myOrders.map(toOrderItem);
 
   orders.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
 
