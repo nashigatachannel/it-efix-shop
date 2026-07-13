@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     "/api/wholesale-orders": ["src/lib/assets/hotta-order-template.xlsx"],
     "/api/account/orders/receipt": ["src/lib/assets/fonts/*.ttf"],
   },
-  serverExternalPackages: ["exceljs"],
+  serverExternalPackages: ["exceljs", "subset-font"],
 };
 
 export default nextConfig;
