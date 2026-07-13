@@ -13,6 +13,7 @@ export interface AccountOrderItem {
   amountTotal: number | null;
   paymentStatus: string;
   receiptUrl: string | null;
+  customerName: string;
 }
 
 /**
@@ -77,6 +78,7 @@ function toOrderItem(row: WebOrderRow, receiptUrl: string | null): AccountOrderI
     amountTotal: row.amountTotal,
     paymentStatus: row.paymentStatus,
     receiptUrl,
+    customerName: row.customerName,
   };
 }
 

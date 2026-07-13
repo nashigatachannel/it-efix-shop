@@ -10,6 +10,7 @@ interface AccountOrderItem {
   amountTotal: number | null;
   paymentStatus: string;
   receiptUrl: string | null;
+  customerName: string;
 }
 
 type TabKey = "orders" | "settings";
@@ -45,10 +46,133 @@ function statusBadgeClass(status: string): string {
   return "bg-stone-100 text-stone-600 border border-stone-200";
 }
 
+function ReceiptModal({
+  order,
+  onClose,
+}: {
+  order: AccountOrderItem;
+  onClose: () => void;
+}) {
+  const [addressee, setAddressee] = useState(order.customerName);
+  const [note, setNote] = useState(`${order.model || "E-FIX製品"} 代金`);
+  const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const download = async () => {
+    if (!addressee.trim()) {
+      setError("宛名を入力してください。");
+      return;
+    }
+    setError(null);
+    setDownloading(true);
+    try {
+      const query = new URLSearchParams({
+        orderId: order.orderId,
+        to: addressee.trim(),
+        note: note.trim(),
+      });
+      const res = await fetch(`/api/account/orders/receipt?${query}`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(data?.error ?? "領収書の発行に失敗しました。");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `receipt-${order.orderId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      onClose();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "領収書の発行に失敗しました。",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="領収書の発行"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3 className="text-base font-bold text-stone-900">領収書の発行</h3>
+        <p className="mt-1 text-xs text-stone-500">
+          注文番号 {order.orderId}・{formatYen(order.amountTotal)}（税込）
+        </p>
+
+        <label className="mt-4 block text-xs font-bold text-stone-600">
+          宛名
+          <input
+            type="text"
+            value={addressee}
+            maxLength={60}
+            onChange={(event) => setAddressee(event.target.value)}
+            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-normal text-stone-900 focus:border-[#0b806b] focus:outline-none"
+          />
+        </label>
+        <p className="mt-1 text-right text-xs text-stone-400">※「様」は自動で付きます</p>
+
+        <label className="mt-3 block text-xs font-bold text-stone-600">
+          但し書き
+          <input
+            type="text"
+            value={note}
+            maxLength={80}
+            onChange={(event) => setNote(event.target.value)}
+            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-normal text-stone-900 focus:border-[#0b806b] focus:outline-none"
+          />
+        </label>
+        <p className="mt-1 text-right text-xs text-stone-400">
+          ※「但し」「として」は自動で付きます
+        </p>
+
+        {error && (
+          <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-stone-300 px-4 py-2 text-sm font-bold text-stone-600 hover:bg-stone-50"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onClick={download}
+            disabled={downloading}
+            className="rounded-md bg-[#0b806b] px-4 py-2 text-sm font-bold text-white hover:bg-[#0a6f5d] disabled:opacity-50"
+          >
+            {downloading ? "生成中..." : "PDFをダウンロード"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrdersPanel() {
   const [orders, setOrders] = useState<AccountOrderItem[] | null>(null);
   const [devHint, setDevHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<AccountOrderItem | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -158,24 +282,42 @@ function OrdersPanel() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  {order.receiptUrl ? (
-                    <a
-                      href={order.receiptUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex rounded-md border border-[#0b806b]/40 bg-white px-3 py-1.5 text-xs font-bold text-[#0b806b] hover:bg-[#0b806b] hover:text-white"
-                    >
-                      表示
-                    </a>
-                  ) : (
-                    <span className="text-xs text-stone-400">—</span>
-                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {order.paymentStatus === "paid" && (
+                      <button
+                        type="button"
+                        onClick={() => setReceiptOrder(order)}
+                        className="inline-flex rounded-md bg-[#0b806b] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0a6f5d]"
+                      >
+                        宛名入り領収書
+                      </button>
+                    )}
+                    {order.receiptUrl && (
+                      <a
+                        href={order.receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex rounded-md border border-[#0b806b]/40 bg-white px-3 py-1.5 text-xs font-bold text-[#0b806b] hover:bg-[#0b806b] hover:text-white"
+                      >
+                        Stripe領収書
+                      </a>
+                    )}
+                    {order.paymentStatus !== "paid" && !order.receiptUrl && (
+                      <span className="text-xs text-stone-400">—</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {receiptOrder && (
+        <ReceiptModal
+          order={receiptOrder}
+          onClose={() => setReceiptOrder(null)}
+        />
+      )}
     </div>
   );
 }
