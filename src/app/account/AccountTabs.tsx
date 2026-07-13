@@ -9,6 +9,7 @@ interface AccountOrderItem {
   model: string;
   amountTotal: number | null;
   paymentStatus: string;
+  paymentMethod: string;
   customerName: string;
 }
 
@@ -33,25 +34,18 @@ function formatYen(amount: number | null): string {
   return `¥${amount.toLocaleString("ja-JP")}`;
 }
 
-function statusLabel(status: string): string {
-  if (status === "paid") return "入金済";
+/** シート上の支払方法表記を顧客向け表示に揃える。 */
+function paymentMethodDisplay(method: string): string {
+  if (method === "カード") return "クレジットカード";
+  return method || "—";
+}
+
+/** 未入金・失敗など、適格請求書を発行できない注文の状態表示。 */
+function pendingStatusLabel(status: string): string {
   if (status === "unpaid") return "入金待ち";
   if (status === "payment_failed") return "支払い失敗";
   if (status === "expired") return "期限切れ";
-  return status || "—";
-}
-
-function statusBadgeClass(status: string): string {
-  if (status === "paid") {
-    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
-  }
-  if (status === "unpaid") {
-    return "bg-amber-50 text-amber-700 border border-amber-200";
-  }
-  if (status === "payment_failed" || status === "expired") {
-    return "bg-red-50 text-red-700 border border-red-200";
-  }
-  return "bg-stone-100 text-stone-600 border border-stone-200";
+  return "—";
 }
 
 function ReceiptModal({
@@ -245,7 +239,7 @@ function OrdersPanel() {
               <th className="px-4 py-3">注文番号</th>
               <th className="px-4 py-3">商品</th>
               <th className="px-4 py-3 text-right">金額（税込）</th>
-              <th className="px-4 py-3">状態</th>
+              <th className="px-4 py-3">支払方法</th>
               <th className="px-4 py-3">適格請求書</th>
             </tr>
           </thead>
@@ -267,14 +261,8 @@ function OrdersPanel() {
                 <td className="px-4 py-3 text-right font-mono text-emerald-700">
                   {formatYen(order.amountTotal)}
                 </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded px-2 py-0.5 text-xs ${statusBadgeClass(
-                      order.paymentStatus,
-                    )}`}
-                  >
-                    {statusLabel(order.paymentStatus)}
-                  </span>
+                <td className="px-4 py-3 text-stone-700">
+                  {paymentMethodDisplay(order.paymentMethod)}
                 </td>
                 <td className="px-4 py-3">
                   {order.paymentStatus === "paid" ? (
@@ -286,7 +274,9 @@ function OrdersPanel() {
                       宛名入り適格請求書
                     </button>
                   ) : (
-                    <span className="text-xs text-stone-400">—</span>
+                    <span className="text-xs text-stone-400">
+                      {pendingStatusLabel(order.paymentStatus)}
+                    </span>
                   )}
                 </td>
               </tr>

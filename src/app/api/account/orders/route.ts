@@ -11,6 +11,7 @@ export interface AccountOrderItem {
   model: string;
   amountTotal: number | null;
   paymentStatus: string;
+  paymentMethod: string;
   customerName: string;
 }
 
@@ -36,6 +37,7 @@ function toOrderItem(row: WebOrderRow): AccountOrderItem {
     model: row.model,
     amountTotal: row.amountTotal,
     paymentStatus: row.paymentStatus,
+    paymentMethod: row.paymentMethod,
     customerName: row.customerName,
   };
 }
