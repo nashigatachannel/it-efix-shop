@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { google } from "googleapis";
+import {
+  findInvoiceRow,
+  normalizeInvNumber,
+  recordCardPayment,
+} from "@/lib/sales-sheet";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -363,6 +368,80 @@ async function upsertPendingModel(
   }
 }
 
+/**
+ * 請求書カード払い(pay_type=invoice)の決済完了処理。
+ * 現実世界で契約〜納品済みの売掛をカードで回収するルートで、Web注文/機種保留/取付予約とは無関係。
+ * 一切実行しない: upsertWebOrder / upsertPendingModel / upsertInstallationReservation。
+ */
+async function handleInvoicePaymentCompleted(
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const metadata = session.metadata ?? {};
+  const invDisplayFromMetadata = metadata.inv_number ?? "";
+  const serialFromMetadata = metadata.serial ?? "";
+  const customerNameFromMetadata = metadata.customer_name ?? "";
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : (session.payment_intent?.id ?? null);
+  if (!paymentIntentId) {
+    console.error(
+      `Invoice payment session ${session.id} has no payment_intent; cannot record fee`,
+    );
+    return;
+  }
+
+  const invNumber = normalizeInvNumber(invDisplayFromMetadata);
+  if (invNumber === null) {
+    console.error(
+      `Invoice payment session ${session.id} has invalid inv_number metadata: "${invDisplayFromMetadata}"`,
+    );
+    return;
+  }
+
+  const invoiceRow = await findInvoiceRow(invNumber);
+  if (!invoiceRow) {
+    console.error(
+      `Invoice payment session ${session.id}: invoice row not found for INV-${invNumber}`,
+    );
+    return;
+  }
+
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+    expand: ["latest_charge.balance_transaction"],
+  });
+  const charge = paymentIntent.latest_charge;
+  const balanceTransaction =
+    charge && typeof charge === "object" ? charge.balance_transaction : null;
+  const feeJpy =
+    balanceTransaction && typeof balanceTransaction === "object"
+      ? balanceTransaction.fee
+      : 0;
+
+  const result = await recordCardPayment({
+    rowIndex: invoiceRow.rowIndex,
+    serial: serialFromMetadata || invoiceRow.serial,
+    customerName: customerNameFromMetadata || invoiceRow.customerName,
+    invDisplay: invoiceRow.invDisplay,
+    amountJpy: invoiceRow.amountJpy,
+    feeJpy,
+    paymentIntentId,
+    paidAtJst: new Date(),
+  });
+
+  if (result.alreadyRecordedForThisPayment) {
+    console.log(
+      `Invoice card payment already recorded (duplicate webhook delivery): session=${session.id} inv=${invoiceRow.invDisplay} row=${invoiceRow.rowIndex}`,
+    );
+    return;
+  }
+
+  console.log(
+    `Invoice card payment recorded: session=${session.id} inv=${invoiceRow.invDisplay} row=${invoiceRow.rowIndex} gColumnAlreadyFilled=${result.gColumnAlreadyFilled}`,
+  );
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -390,6 +469,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     event.type === "checkout.session.expired"
   ) {
     const session = event.data.object as Stripe.Checkout.Session;
+
+    // 請求書カード払い(pay_type=invoice)は完全に別ルート。
+    // Web注文/機種保留マスタ/取付予約への書き込みは一切行わない。
+    if (session.metadata?.pay_type === "invoice") {
+      if (event.type === "checkout.session.completed") {
+        try {
+          await handleInvoicePaymentCompleted(session);
+        } catch (err) {
+          console.error("Failed to record invoice card payment:", err);
+        }
+      } else {
+        // カードのみのフローのため async_payment_*/expired は発生しない想定。ログのみ残す。
+        console.log(
+          `Ignoring invoice pay_type event (unexpected for card-only flow): session=${session.id} type=${event.type}`,
+        );
+      }
+      return NextResponse.json({ received: true });
+    }
 
     try {
       const sheets = await getGoogleSheetsClient();

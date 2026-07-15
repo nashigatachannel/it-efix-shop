@@ -91,6 +91,7 @@ const sideNavItems: NavItem[] = [
     match: ["/admin/hotta"],
   },
   { href: "/admin/customers", label: "顧客管理", icon: "user" },
+  { href: "/admin/pay-links", label: "請求書カード払い", icon: "tag" },
   { href: "/admin/inventory", label: "在庫管理", icon: "stack" },
   { href: "/admin/settings", label: "設定", icon: "settings" },
   { href: "/admin/logs", label: "ログ管理", icon: "file" },
