@@ -23,14 +23,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!email || !password) {
     return NextResponse.json(
-      { error: "メールアドレスとパスワードを入力してください" },
+      { error: "ユーザー名とパスワードを入力してください" },
       { status: 400 }
     );
   }
 
   await new Promise((resolve) => setTimeout(resolve, 200));
 
-  if (!verifyCredentials(email, password)) {
+  if (!(await verifyCredentials(email, password))) {
     return NextResponse.json(
       { error: "認証に失敗しました" },
       { status: 401 }
