@@ -159,10 +159,11 @@ function buildSheetRow(
     metadata.requestInvoice === "true" || metadata.requestInvoice === "1";
   const isCustom = metadata.type === "custom_payment";
 
-  // 通常注文は productIds、カスタム決済は description（明細サマリ）
+  // 通常注文は productNames（人間が読める商品名。無ければ後方互換で productIds）、
+  // カスタム決済は description（明細サマリ）
   const modelDisplay = isCustom
     ? metadata.description ?? ""
-    : metadata.productIds ?? "";
+    : metadata.productNames || metadata.productIds || "";
 
   return [
     serialNumber,

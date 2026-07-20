@@ -184,3 +184,11 @@ export const ALL_PRODUCTS: Product[] = [
 export function getProductById(id: ProductId): Product | undefined {
   return ALL_PRODUCTS.find((p) => p.id === id);
 }
+
+/**
+ * getProductById の型緩和版。スプシ保存値や外部入力など、事前に ProductId として
+ * 検証されていない任意の文字列から商品を逆引きするために使う（未知IDは undefined）。
+ */
+export function findProductByLooseId(id: string): Product | undefined {
+  return ALL_PRODUCTS.find((p) => p.id === id);
+}

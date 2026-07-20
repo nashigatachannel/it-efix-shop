@@ -63,6 +63,14 @@ interface CheckoutRequestBody {
 // V3: 注文可能な都道府県。北海道のみ。将来エリア拡大時はここに追加する。
 const AVAILABLE_PREFECTURES = new Set<string>(["北海道"]);
 
+// Stripe metadata の1キーあたりの値は500文字まで。超過分は末尾を省略する。
+const METADATA_VALUE_MAX_LENGTH = 500;
+
+function truncateMetadataValue(value: string): string {
+  if (value.length <= METADATA_VALUE_MAX_LENGTH) return value;
+  return `${value.slice(0, METADATA_VALUE_MAX_LENGTH - 1)}…`;
+}
+
 function buildAddressString(customer: CustomerInfo): string {
   if (customer.prefecture && customer.addressDetail) {
     return `${customer.prefecture} ${customer.addressDetail}`.trim();
@@ -316,6 +324,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             : rl!.product.id
         )
         .join(","),
+      // 管理画面で人間が読める商品名を表示するための冗長データ。
+      // 商品マスタが将来リネーム/削除されても productIds が唯一の正データとして残る。
+      productNames: truncateMetadataValue(
+        resolvedLines
+          .map((rl) =>
+            rl!.quantity > 1
+              ? `${rl!.product.name}×${rl!.quantity}`
+              : rl!.product.name
+          )
+          .join(",")
+      ),
       customerName: customer.name,
       customerPostalCode: customer.postalCode,
       customerPrefecture: customer.prefecture ?? "",
