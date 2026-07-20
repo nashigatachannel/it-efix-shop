@@ -105,11 +105,9 @@ function OrderDetailPanel({ order }: { order: WebOrderRow }) {
                 >
                   {line.displayName}
                 </span>
-                {line.quantity !== null && (
-                  <span className="font-mono text-xs text-slate-400">
-                    ×{line.quantity}
-                  </span>
-                )}
+                <span className="font-mono text-xs text-slate-400">
+                  ×{line.quantity ?? 1}
+                </span>
               </li>
             ))}
           </ul>
