@@ -5,8 +5,10 @@ export const SPREADSHEET_ID =
   process.env.GOOGLE_SPREADSHEET_ID ??
   "";
 export const WEB_ORDERS_SHEET = "Web注文";
+// 卸注文の既定保存先は「EFIX 注文DB」スプシ。旧デフォルト(EFIX販売スプシ)の
+// 「卸注文管理」「卸受注明細」ダミータブは2026-07-27に削除済みのため流用不可。
 export const DEFAULT_WHOLESALE_SPREADSHEET_ID =
-  "1rD8a6c9g2Y-8ucGXu2Dajy2O57wwI0C3lkou5I3OB9Q";
+  "19AG4PTu8aAxxzhZ5UiK7TYSKFjGD02uU0VBnB3DdOdg";
 export const WHOLESALE_SPREADSHEET_ID =
   process.env.GOOGLE_WHOLESALE_SPREADSHEET_ID ??
   process.env.GOOGLE_ORDERS_SPREADSHEET_ID ??

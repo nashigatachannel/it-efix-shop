@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { sendHottaOrderEmail } from "@/lib/hotta-order";
 import { fetchPartnerById, getCurrentPartner } from "@/lib/partner-auth";
-import { getSheetsClient } from "@/lib/sheets";
+import {
+  DEFAULT_WHOLESALE_SPREADSHEET_ID,
+  getSheetsClient,
+} from "@/lib/sheets";
 import {
   formatYen,
-  isGeneratedHottaBracketItem,
   isHottaBracketItem,
+  isHottaPricePendingItem,
   wholesaleItemsForTier,
   type WholesaleCatalogItem,
 } from "@/lib/wholesale-catalog";
@@ -16,8 +19,6 @@ export const dynamic = "force-dynamic";
 const ORDERS_SHEET = process.env.GOOGLE_WHOLESALE_ORDERS_SHEET ?? "卸注文管理";
 const DETAILS_SHEET =
   process.env.GOOGLE_WHOLESALE_ORDER_DETAILS_SHEET ?? "卸受注明細";
-const DEFAULT_WHOLESALE_SPREADSHEET_ID =
-  "1rD8a6c9g2Y-8ucGXu2Dajy2O57wwI0C3lkou5I3OB9Q";
 
 const ORDER_HEADERS = [
   "受注番号",
@@ -234,19 +235,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  const hiddenHottaKitLines = lines.filter((line) =>
-    isGeneratedHottaBracketItem(line.item),
-  );
-  if (hiddenHottaKitLines.length > 0) {
-    return NextResponse.json(
-      {
-        error:
-          "堀田機工ブラケットはSTEP 3の4項目から選択してください。",
-      },
-      { status: 400 },
-    );
-  }
-
   const hottaLines = lines.filter((line) => isHottaBracketItem(line.item));
   if (hottaLines.length > 0 && !customer.machineModel?.trim()) {
     return NextResponse.json(
@@ -272,10 +260,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .map((line) => `${line.item.shortName} x${line.quantity}`)
     .join(" / ");
   const hasHottaLines = hottaLines.length > 0;
+  const hasPendingHottaLines = hottaLines.some((line) =>
+    isHottaPricePendingItem(line.item),
+  );
   const normalizedNotes = [
     customer.notes,
     customer.machineModel ? `取付機種: ${customer.machineModel}` : "",
-    hasHottaLines ? "堀田機工ブラケット価格未定" : "",
+    hasPendingHottaLines ? "堀田機工ブラケット価格未定" : "",
   ]
     .map((value) => value?.trim())
     .filter(Boolean)
@@ -330,7 +321,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               : "wholesale-site",
             "未納品",
             "",
-            hasHottaLines ? "価格確認中" : "未請求",
+            hasPendingHottaLines ? "価格確認中" : "未請求",
             "",
             "",
             "",
@@ -356,8 +347,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           line.item.partNumber,
           line.item.name,
           line.quantity,
-          isHottaBracketItem(line.item) ? "" : line.item.wholesalePriceExTax,
-          isHottaBracketItem(line.item)
+          isHottaPricePendingItem(line.item)
+            ? ""
+            : line.item.wholesalePriceExTax,
+          isHottaPricePendingItem(line.item)
             ? ""
             : line.item.wholesalePriceExTax * line.quantity,
           "未引当",

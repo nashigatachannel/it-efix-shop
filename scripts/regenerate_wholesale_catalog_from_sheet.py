@@ -224,6 +224,8 @@ def build_items(sh, price_col_opt: int, price_col_main: int, assets: list[dict],
         short_name = as_text(row[0]) or name
         if not no or not name:
             continue
+        if as_text(row[3]) == "構成品":
+            continue  # 親SKU注文に連動して手配するBOM子部材 — 単品販売しないためカタログ非掲載
         item = {
             "kind": "part", "shortName": short_name, "model": model,
             "category": category, "partNumber": part_no, "name": name,

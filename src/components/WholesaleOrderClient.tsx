@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatYen,
-  isGeneratedHottaBracketItem,
   isHottaBracketItem,
+  isHottaPricePendingItem,
   type WholesaleCatalogItem,
   type WholesaleImageAsset,
 } from "@/lib/wholesale-catalog";
@@ -650,7 +650,7 @@ function normalizeOrderLabel(value: string): string {
 
 function zeroPriceLabel(item: WholesaleCatalogItem): string | null {
   if (item.wholesalePriceExTax !== 0) return null;
-  if (item.category === "ブラケット") return null;
+  if (item.category.includes("ブラケット")) return null;
   const text = `${item.shortName} ${item.name} ${item.partNumber}`.toLowerCase();
   if (text.includes("isobus ut")) return "単体無料";
   if (text.includes("esnav")) return "ディスプレイ付属";
@@ -763,10 +763,7 @@ export default function WholesaleOrderClient({
   const regularOptionItems = useMemo(
     () =>
       sortByDisplayOrder(
-        optionItems.filter(
-          (item) =>
-            !isHottaBracketItem(item) && !isGeneratedHottaBracketItem(item),
-        ),
+        optionItems.filter((item) => !isHottaBracketItem(item)),
         displayOrderById,
       ),
     [displayOrderById, optionItems],
@@ -893,6 +890,11 @@ export default function WholesaleOrderClient({
     [lines],
   );
   const hasHottaLines = hottaLines.length > 0;
+  const pendingHottaLines = useMemo(
+    () => hottaLines.filter((line) => isHottaPricePendingItem(line.item)),
+    [hottaLines],
+  );
+  const hasPendingHottaLines = pendingHottaLines.length > 0;
 
   const subtotalExTax = lines.reduce(
     (sum, line) => sum + line.item.wholesalePriceExTax * line.quantity,
@@ -971,7 +973,7 @@ export default function WholesaleOrderClient({
       quantity,
       unitPriceExTax: item.wholesalePriceExTax,
       subtotalExTax: item.wholesalePriceExTax * quantity,
-      pricePending: isHottaBracketItem(item),
+      pricePending: isHottaPricePendingItem(item),
     }));
 
     return {
@@ -1166,7 +1168,7 @@ export default function WholesaleOrderClient({
       .slice(0, 12)
       .map(
         ({ item, quantity }) => {
-          const amount = isHottaBracketItem(item)
+          const amount = isHottaPricePendingItem(item)
             ? "価格未定"
             : `¥${formatYen(item.wholesalePriceExTax * quantity)}`;
           return `・${item.shortName} / ${item.model} / ${item.category} x ${quantity} = ${amount}`;
@@ -1193,8 +1195,8 @@ export default function WholesaleOrderClient({
         `小計(税抜): ¥${formatYen(subtotalExTax)}`,
         `消費税: ¥${formatYen(tax)}`,
         `合計(税込): ¥${formatYen(totalIncTax)}`,
-        ...(hasHottaLines
-          ? ["※堀田機工ブラケットは価格未定のため、金額に含めていません。"]
+        ...(hasPendingHottaLines
+          ? ["※価格未定の堀田機工ブラケットは、金額に含めていません。"]
           : []),
         "",
         "OKを押すと注文が送信されます。",
@@ -1300,12 +1302,14 @@ export default function WholesaleOrderClient({
   };
 
   const lineAmountLabel = (item: WholesaleCatalogItem, quantity: number) =>
-    isHottaBracketItem(item)
+    isHottaPricePendingItem(item)
       ? "価格未定"
       : `¥${formatYen(item.wholesalePriceExTax * quantity)}`;
 
   const unitPriceLabel = (item: WholesaleCatalogItem) =>
-    isHottaBracketItem(item) ? "価格未定" : `¥${formatYen(item.wholesalePriceExTax)}`;
+    isHottaPricePendingItem(item)
+      ? "価格未定"
+      : `¥${formatYen(item.wholesalePriceExTax)}`;
 
   const renderSetDetailGroup = (group: SetDetailGroup) => (
     <details key={group.id} className="mt-3 border-l-2 border-cyan-200 pl-3">
@@ -1476,7 +1480,9 @@ export default function WholesaleOrderClient({
               )}
               {isHottaBracketItem(item) && (
                 <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800">
-                  堀田機工・価格未定
+                  {isHottaPricePendingItem(item)
+                    ? "堀田機工・価格未定"
+                    : "堀田機工製作"}
                 </span>
               )}
               {isPendingWholesalePrice(item) && (
@@ -1568,9 +1574,15 @@ export default function WholesaleOrderClient({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-base font-bold text-stone-950">{item.shortName}</h3>
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-            価格未定
-          </span>
+          {isHottaPricePendingItem(item) ? (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+              価格未定
+            </span>
+          ) : (
+            <span className="rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+              ¥{formatYen(item.wholesalePriceExTax)} 税抜
+            </span>
+          )}
         </div>
         <p className="mt-1 text-sm text-stone-500">
           取付機種を添えて堀田機工へ注文書を送付
@@ -1943,10 +1955,10 @@ export default function WholesaleOrderClient({
                   ¥{formatYen(totalIncTax)}
                 </span>
               </div>
-              {hasHottaLines && (
+              {hasPendingHottaLines && (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
-                  堀田機工ブラケット {hottaLines.length}
-                  件は価格未定のため、上記金額には含めていません。
+                  価格未定の堀田機工ブラケット {pendingHottaLines.length}
+                  件は、上記金額には含めていません。
                 </p>
               )}
             </div>
