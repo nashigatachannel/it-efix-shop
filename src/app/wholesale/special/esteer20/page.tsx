@@ -5,6 +5,7 @@ import {
   SPECIAL_WHOLESALE_MAIN_ITEMS,
   SPECIAL_WHOLESALE_OPTION_ITEMS,
   WHOLESALE_IMAGE_ASSETS,
+  isHottaBracketItem,
 } from "@/lib/wholesale-catalog";
 
 const ESTEER20_HERO_IMAGE =
@@ -31,6 +32,8 @@ export default async function ESteer20SpecialWholesalePage() {
   );
   const optionItems = SPECIAL_WHOLESALE_OPTION_ITEMS.filter((item) => {
     if (item.model === "eSteer20/20MAX") return true;
+    // 堀田機工ブラケットはトラクター側金具のため機種を問わず掲載
+    if (isHottaBracketItem(item)) return true;
     if (item.model !== "共用") return false;
     const text = `${item.shortName} ${item.partNumber} ${item.name}`
       .toLowerCase()
