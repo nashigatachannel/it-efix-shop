@@ -1535,7 +1535,7 @@ export default function WholesaleOrderClient({
               {item.partNumber || "品番未設定"} / {item.name}
             </p>
             {bundledChildren.length > 0 && (
-              <details open className="mt-3 border-l-2 border-cyan-200 pl-3">
+              <details className="mt-3 border-l-2 border-cyan-200 pl-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[11px] font-bold text-cyan-800 [&::-webkit-details-marker]:hidden">
                   <span>セット構成</span>
                   <span className="rounded bg-cyan-100 px-2 py-0.5 text-cyan-800">
