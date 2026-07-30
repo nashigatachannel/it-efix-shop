@@ -1520,13 +1520,22 @@ export default function WholesaleOrderClient({
                     {bundledChildren.length}件
                   </span>
                 </summary>
-                <ul className="mt-1 grid gap-1">
+                <ul className="mt-1 grid gap-1.5">
                   {bundledChildren.map((child) => (
                     <li
                       key={child.id}
-                      className="grid gap-1 text-xs text-stone-600 sm:grid-cols-[minmax(88px,auto)_1fr]"
+                      className="flex flex-wrap items-center gap-2 text-xs text-stone-600"
                     >
-                      <span className="font-mono text-stone-500">
+                      <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded border border-stone-200 bg-stone-50">
+                        <Image
+                          src={child.image}
+                          alt={child.name}
+                          fill
+                          sizes="40px"
+                          className="object-contain p-0.5"
+                        />
+                      </span>
+                      <span className="font-mono text-stone-500 sm:min-w-[88px]">
                         {child.partNumber || "-"}
                       </span>
                       <span className="font-semibold text-stone-700">
