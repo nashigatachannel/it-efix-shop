@@ -27,7 +27,7 @@ from datetime import date
 from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-sys.path.insert(0, r"C:/Users/user/.claude/lib")
+sys.path.insert(0, r"C:/Users/tunag/.claude/lib")
 import warnings
 
 warnings.filterwarnings("ignore")
