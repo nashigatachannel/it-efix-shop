@@ -5,7 +5,7 @@ import re
 import shutil
 import sys
 from dataclasses import asdict, dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -56,10 +56,11 @@ def as_int(value) -> int:
 def price_inc_tax(price_ex_tax: int | None) -> int | None:
     if price_ex_tax is None:
         return None
+    # 消費税は切り捨て（税抜が税込÷1.1の切り上げ値のとき、四捨五入だと+1円ズレる）
     return int(
         (Decimal(price_ex_tax) * (Decimal("1") + TAX_RATE)).quantize(
             Decimal("1"),
-            rounding=ROUND_HALF_UP,
+            rounding=ROUND_FLOOR,
         ),
     )
 

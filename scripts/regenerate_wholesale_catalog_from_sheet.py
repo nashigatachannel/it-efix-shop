@@ -63,7 +63,8 @@ def as_int(value) -> int:
 def price_inc_tax(price_ex_tax: int | None) -> int | None:
     if price_ex_tax is None:
         return None
-    return round(price_ex_tax * 1.1)
+    # 消費税は切り捨て（税抜が税込÷1.1の切り上げ値のとき、四捨五入だと+1円ズレる: 1181819×1.1=1300000.9）
+    return price_ex_tax * 11 // 10
 
 
 def slug(value: str, fallback: str) -> str:

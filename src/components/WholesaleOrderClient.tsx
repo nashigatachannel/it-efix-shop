@@ -159,7 +159,14 @@ function isTransferKitItem(
   return item.section === "載せ替えセット";
 }
 
-/** STEP4: CHC純正ブラケット（外車/汎用）+ 国産ブラケット機種別キット */
+/** STEP3: スリーブ単品（DH1〜19・スペーサー等。載せ替えセット内のsleeve行は除く） */
+function isSleeveItem(
+  item: Pick<WholesaleCatalogItem, "section" | "category">,
+): boolean {
+  return !isTransferKitItem(item) && item.category === "スリーブ";
+}
+
+/** STEP5: CHC純正ブラケット（外車/汎用）+ 国産ブラケット機種別キット */
 function isGenuineBracketItem(
   item: Pick<WholesaleCatalogItem, "section" | "category">,
 ): boolean {
@@ -770,8 +777,22 @@ export default function WholesaleOrderClient({
       ),
     [displayOrderById, optionItems],
   );
-  const standaloneOptionItems = useMemo(
-    () => regularOptionItems.filter((item) => !SET_COMPONENT_CHILD_IDS.has(item.id)),
+  const standaloneOptionItems = useMemo(() => {
+    const items = regularOptionItems.filter(
+      (item) =>
+        !SET_COMPONENT_CHILD_IDS.has(item.id) && !isSleeveItem(item),
+    );
+    // テスト注文セクションはリスト最下部に回す
+    return [
+      ...items.filter((item) => item.section !== "注文テスト"),
+      ...items.filter((item) => item.section === "注文テスト"),
+    ];
+  }, [regularOptionItems]);
+  const sleeveItems = useMemo(
+    () =>
+      regularOptionItems.filter(
+        (item) => isSleeveItem(item) && !SET_COMPONENT_CHILD_IDS.has(item.id),
+      ),
     [regularOptionItems],
   );
   const transferKitParentItems = useMemo(
@@ -876,14 +897,15 @@ export default function WholesaleOrderClient({
     standaloneOptionItems,
   ]);
 
-  // STEP番号: 1=本体 2=部品 以降は表示されるセクションだけ連番で振る
+  // STEP番号: 1=本体 → 載せ替え → スリーブ → 部品 → 純正 → 堀田（表示されるセクションだけ連番で振る）
   const stepNumbers = (() => {
-    let next = 2;
-    return {
-      transfer: transferKitParentItems.length > 0 ? ++next : null,
-      genuine: genuineBracketItems.length > 0 ? ++next : null,
-      hotta: hottaBracketItems.length > 0 ? ++next : null,
-    };
+    let next = 1;
+    const transfer = transferKitParentItems.length > 0 ? ++next : null;
+    const sleeve = sleeveItems.length > 0 ? ++next : null;
+    const parts = ++next;
+    const genuine = genuineBracketItems.length > 0 ? ++next : null;
+    const hotta = hottaBracketItems.length > 0 ? ++next : null;
+    return { transfer, sleeve, parts, genuine, hotta };
   })();
 
   const parentUnitCountFor = useCallback(
@@ -1783,9 +1805,55 @@ export default function WholesaleOrderClient({
             </button>
           </section>
 
+          {transferKitParentItems.length > 0 && (
+            <details className="group">
+              <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
+                <p className="text-sm font-bold text-emerald-700">
+                  STEP {stepNumbers.transfer}
+                </p>
+                <h2 className="text-2xl font-black">載せ替えキットを選択</h2>
+                <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
+                  キットを表示
+                </span>
+                <span className="hidden rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 group-open:inline-flex">
+                  閉じる
+                </span>
+              </summary>
+
+              <div className="hidden space-y-4 group-open:block">
+                <div className="grid gap-3">
+                  {transferKitParentItems.map(renderOptionItem)}
+                </div>
+              </div>
+            </details>
+          )}
+
+          {sleeveItems.length > 0 && (
+            <details className="group">
+              <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
+                <p className="text-sm font-bold text-emerald-700">
+                  STEP {stepNumbers.sleeve}
+                </p>
+                <h2 className="text-2xl font-black">スリーブを選択</h2>
+                <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
+                  スリーブを表示
+                </span>
+                <span className="hidden rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 group-open:inline-flex">
+                  閉じる
+                </span>
+              </summary>
+
+              <div className="hidden space-y-4 group-open:block">
+                <div className="grid gap-3">{sleeveItems.map(renderOptionItem)}</div>
+              </div>
+            </details>
+          )}
+
           <details className="group">
             <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
-              <p className="text-sm font-bold text-emerald-700">STEP 2</p>
+              <p className="text-sm font-bold text-emerald-700">
+                STEP {stepNumbers.parts}
+              </p>
               <h2 className="text-2xl font-black">部品・オプションを選択</h2>
               <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
                 部品を表示
@@ -1865,29 +1933,6 @@ export default function WholesaleOrderClient({
             <div className="grid gap-3">{visibleOptions.map(renderOptionItem)}</div>
             </div>
           </details>
-
-          {transferKitParentItems.length > 0 && (
-            <details className="group">
-              <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
-                <p className="text-sm font-bold text-emerald-700">
-                  STEP {stepNumbers.transfer}
-                </p>
-                <h2 className="text-2xl font-black">載せ替えキットを選択</h2>
-                <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
-                  キットを表示
-                </span>
-                <span className="hidden rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 group-open:inline-flex">
-                  閉じる
-                </span>
-              </summary>
-
-              <div className="hidden space-y-4 group-open:block">
-                <div className="grid gap-3">
-                  {transferKitParentItems.map(renderOptionItem)}
-                </div>
-              </div>
-            </details>
-          )}
 
           {genuineBracketItems.length > 0 && (
             <details className="group">
