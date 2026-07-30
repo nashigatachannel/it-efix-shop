@@ -258,44 +258,6 @@ const E20_PACKAGE_20MAX_DETAIL: SetDetailGroup = {
   ],
 };
 
-const E20_TRANSFER_SET_DETAIL: SetDetailGroup = {
-  id: "e20-transfer-set",
-  title: "E20 載せ替えセット",
-  partNumber: "JPN001",
-  model: "eSteer20/20MAX",
-  category: "載せ替えセット",
-  note: "並び順.xlsxのE20載せ替えセット欄を元にした内容確認用です。",
-  lines: [
-    {
-      partNumber: "4006020058",
-      name: "ESW-2 Electric Steering Wheel(36cm with horn)",
-      quantity: "1",
-    },
-    {
-      partNumber: "4103020345",
-      name: "Integrated Main Cable(with horn connector)",
-      quantity: "1",
-    },
-    {
-      partNumber: "203000513",
-      name: "Steering wheel power ball(1units)",
-      quantity: "1",
-      note: "カタログ未掲載",
-    },
-    { partNumber: "4102030090", name: "ESR-1 Receiver Bracket", quantity: "2" },
-    { partNumber: "103013031", name: "Plate with Ball", quantity: "1" },
-    { partNumber: "103013032", name: "Double Socket Arm", quantity: "1" },
-    { partNumber: "104080012", name: "U-bolt M5*35*50 (304)", quantity: "1" },
-    { partNumber: "-", name: "sleeve", quantity: "1", note: "型式次第" },
-    {
-      partNumber: "-",
-      name: "Motor bracket",
-      quantity: "1",
-      note: "型式次第",
-    },
-  ],
-};
-
 const SET_DETAIL_GROUPS_BY_PARENT_ID: Record<string, SetDetailGroup[]> = {
   "set-20": [E20_PACKAGE_20_DETAIL],
   "part-114-8006010189": [E20_PACKAGE_20_DETAIL],
@@ -765,8 +727,6 @@ export default function WholesaleOrderClient({
     pageConfig.pageKey === "legacy"
       ? LEGACY_DISPLAY_ORDER_BY_ID
       : DISPLAY_ORDER_BY_ID;
-  const pageSetDetailGroups =
-    pageConfig.pageKey === "current" ? [E20_TRANSFER_SET_DETAIL] : [];
   const orderedMainItems = useMemo(
     () => sortByDisplayOrder(mainItems, displayOrderById),
     [displayOrderById, mainItems],
@@ -814,6 +774,10 @@ export default function WholesaleOrderClient({
     () => regularOptionItems.filter((item) => !SET_COMPONENT_CHILD_IDS.has(item.id)),
     [regularOptionItems],
   );
+  const transferKitParentItems = useMemo(
+    () => transferKitItems.filter((item) => item.partNumber === "JPN001"),
+    [transferKitItems],
+  );
   const bundledChildrenByParentId = useMemo(() => {
     const itemById = new Map(regularOptionItems.map((item) => [item.id, item]));
     const grouped: Record<string, WholesaleCatalogItem[]> = {};
@@ -828,13 +792,26 @@ export default function WholesaleOrderClient({
       }
     }
 
+    // 載せ替えキットは親SKU(JPN001)のみ注文可、構成部品は親カード内の参考リスト
+    for (const parent of transferKitParentItems) {
+      grouped[parent.id] = [
+        ...(grouped[parent.id] ?? []),
+        ...transferKitItems.filter((item) => item.id !== parent.id),
+      ];
+    }
+
     return Object.fromEntries(
       Object.entries(grouped).map(([parentId, children]) => [
         parentId,
         sortByDisplayOrder(children, displayOrderById),
       ]),
     );
-  }, [displayOrderById, regularOptionItems]);
+  }, [
+    displayOrderById,
+    regularOptionItems,
+    transferKitItems,
+    transferKitParentItems,
+  ]);
   const allItems = useMemo(
     () => [
       ...orderedMainItems,
@@ -903,7 +880,7 @@ export default function WholesaleOrderClient({
   const stepNumbers = (() => {
     let next = 2;
     return {
-      transfer: transferKitItems.length > 0 ? ++next : null,
+      transfer: transferKitParentItems.length > 0 ? ++next : null,
       genuine: genuineBracketItems.length > 0 ? ++next : null,
       hotta: hottaBracketItems.length > 0 ? ++next : null,
     };
@@ -1410,32 +1387,6 @@ export default function WholesaleOrderClient({
     </details>
   );
 
-  const renderSetInfoCard = (group: SetDetailGroup) => (
-    <article
-      key={group.id}
-      className="rounded-lg border border-cyan-200 bg-cyan-50/60 p-4 shadow-sm"
-    >
-      <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
-        <span className="rounded bg-stone-100 px-2 py-0.5 text-stone-700">
-          {group.model}
-        </span>
-        <span className="rounded bg-cyan-100 px-2 py-0.5 text-cyan-800">
-          {group.category}
-        </span>
-        <span className="rounded bg-white px-2 py-0.5 text-stone-700">
-          内容確認
-        </span>
-      </div>
-      <h3 className="mt-2 text-base font-bold text-stone-950">
-        {group.title}
-      </h3>
-      <p className="mt-1 text-xs text-stone-500">
-        {group.partNumber ?? "-"} / {group.note}
-      </p>
-      {renderSetDetailGroup(group)}
-    </article>
-  );
-
   const renderMainItem = (item: WholesaleCatalogItem) => {
     const detailGroups = SET_DETAIL_GROUPS_BY_PARENT_ID[item.id] ?? [];
     return (
@@ -1562,7 +1513,7 @@ export default function WholesaleOrderClient({
               {item.partNumber || "品番未設定"} / {item.name}
             </p>
             {bundledChildren.length > 0 && (
-              <details className="mt-3 border-l-2 border-cyan-200 pl-3">
+              <details open className="mt-3 border-l-2 border-cyan-200 pl-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[11px] font-bold text-cyan-800 [&::-webkit-details-marker]:hidden">
                   <span>セット構成</span>
                   <span className="rounded bg-cyan-100 px-2 py-0.5 text-cyan-800">
@@ -1906,7 +1857,7 @@ export default function WholesaleOrderClient({
             </div>
           </details>
 
-          {transferKitItems.length > 0 && (
+          {transferKitParentItems.length > 0 && (
             <details className="group">
               <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
                 <p className="text-sm font-bold text-emerald-700">
@@ -1922,13 +1873,8 @@ export default function WholesaleOrderClient({
               </summary>
 
               <div className="hidden space-y-4 group-open:block">
-                {pageSetDetailGroups.length > 0 && (
-                  <div className="grid gap-3">
-                    {pageSetDetailGroups.map(renderSetInfoCard)}
-                  </div>
-                )}
                 <div className="grid gap-3">
-                  {transferKitItems.map(renderOptionItem)}
+                  {transferKitParentItems.map(renderOptionItem)}
                 </div>
               </div>
             </details>
