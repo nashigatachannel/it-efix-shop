@@ -1543,11 +1543,14 @@ export default function WholesaleOrderClient({
                   </span>
                 </summary>
                 <ul className="mt-1 grid gap-1.5">
-                  {bundledChildren.map((child) => (
+                  {bundledChildren.map((child, childIndex) => (
                     <li
                       key={child.id}
                       className="flex flex-wrap items-center gap-2 text-xs text-stone-600"
                     >
+                      <span className="w-5 shrink-0 text-right font-mono font-bold text-cyan-800">
+                        {childIndex + 1}
+                      </span>
                       <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded border border-stone-200 bg-stone-50">
                         <Image
                           src={child.image}
