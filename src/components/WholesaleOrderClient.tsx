@@ -150,6 +150,25 @@ const SET_COMPONENT_PARENT_IDS: Record<string, string[]> = {
 };
 const SET_COMPONENT_CHILD_IDS = new Set(Object.keys(SET_COMPONENT_PARENT_IDS));
 
+const GENUINE_BRACKET_CATEGORIES = new Set(["外車ブラケット", "汎用ブラケット"]);
+
+/** STEP3: E20載せ替えセット一式（親セット+構成部品の単品） */
+function isTransferKitItem(
+  item: Pick<WholesaleCatalogItem, "section">,
+): boolean {
+  return item.section === "載せ替えセット";
+}
+
+/** STEP4: CHC純正ブラケット（外車/汎用）+ 国産ブラケット機種別キット */
+function isGenuineBracketItem(
+  item: Pick<WholesaleCatalogItem, "section" | "category">,
+): boolean {
+  return (
+    item.section === "国産ブラケット" ||
+    GENUINE_BRACKET_CATEGORIES.has(item.category)
+  );
+}
+
 const E20_STANDARD_SHARED_LINES: SetDetailLine[] = [
   {
     partNumber: "J1P502080902010005",
@@ -760,10 +779,33 @@ export default function WholesaleOrderClient({
       ),
     [displayOrderById, optionItems],
   );
+  const transferKitItems = useMemo(
+    () =>
+      sortByDisplayOrder(
+        optionItems.filter((item) => isTransferKitItem(item)),
+        displayOrderById,
+      ),
+    [displayOrderById, optionItems],
+  );
+  const genuineBracketItems = useMemo(
+    () =>
+      sortByDisplayOrder(
+        optionItems.filter(
+          (item) => !isTransferKitItem(item) && isGenuineBracketItem(item),
+        ),
+        displayOrderById,
+      ),
+    [displayOrderById, optionItems],
+  );
   const regularOptionItems = useMemo(
     () =>
       sortByDisplayOrder(
-        optionItems.filter((item) => !isHottaBracketItem(item)),
+        optionItems.filter(
+          (item) =>
+            !isHottaBracketItem(item) &&
+            !isTransferKitItem(item) &&
+            !isGenuineBracketItem(item),
+        ),
         displayOrderById,
       ),
     [displayOrderById, optionItems],
@@ -794,8 +836,20 @@ export default function WholesaleOrderClient({
     );
   }, [displayOrderById, regularOptionItems]);
   const allItems = useMemo(
-    () => [...orderedMainItems, ...regularOptionItems, ...hottaBracketItems],
-    [hottaBracketItems, orderedMainItems, regularOptionItems],
+    () => [
+      ...orderedMainItems,
+      ...regularOptionItems,
+      ...transferKitItems,
+      ...genuineBracketItems,
+      ...hottaBracketItems,
+    ],
+    [
+      genuineBracketItems,
+      hottaBracketItems,
+      orderedMainItems,
+      regularOptionItems,
+      transferKitItems,
+    ],
   );
   const models = useMemo(
     () => unique(standaloneOptionItems.map((item) => item.model)),
@@ -844,6 +898,16 @@ export default function WholesaleOrderClient({
     sectionFilter,
     standaloneOptionItems,
   ]);
+
+  // STEP番号: 1=本体 2=部品 以降は表示されるセクションだけ連番で振る
+  const stepNumbers = (() => {
+    let next = 2;
+    return {
+      transfer: transferKitItems.length > 0 ? ++next : null,
+      genuine: genuineBracketItems.length > 0 ? ++next : null,
+      hotta: hottaBracketItems.length > 0 ? ++next : null,
+    };
+  })();
 
   const parentUnitCountFor = useCallback(
     (item: WholesaleCatalogItem): number => {
@@ -1823,11 +1887,6 @@ export default function WholesaleOrderClient({
                 ))}
               </select>
             </div>
-            {pageSetDetailGroups.length > 0 && (
-              <div className="grid gap-3">
-                {pageSetDetailGroups.map(renderSetInfoCard)}
-              </div>
-            )}
             <div className="flex items-center justify-between text-sm text-stone-500">
               <span>{visibleOptions.length}件を表示</span>
               <button
@@ -1847,10 +1906,63 @@ export default function WholesaleOrderClient({
             </div>
           </details>
 
+          {transferKitItems.length > 0 && (
+            <details className="group">
+              <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
+                <p className="text-sm font-bold text-emerald-700">
+                  STEP {stepNumbers.transfer}
+                </p>
+                <h2 className="text-2xl font-black">載せ替えキットを選択</h2>
+                <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
+                  キットを表示
+                </span>
+                <span className="hidden rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 group-open:inline-flex">
+                  閉じる
+                </span>
+              </summary>
+
+              <div className="hidden space-y-4 group-open:block">
+                {pageSetDetailGroups.length > 0 && (
+                  <div className="grid gap-3">
+                    {pageSetDetailGroups.map(renderSetInfoCard)}
+                  </div>
+                )}
+                <div className="grid gap-3">
+                  {transferKitItems.map(renderOptionItem)}
+                </div>
+              </div>
+            </details>
+          )}
+
+          {genuineBracketItems.length > 0 && (
+            <details className="group">
+              <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
+                <p className="text-sm font-bold text-emerald-700">
+                  STEP {stepNumbers.genuine}
+                </p>
+                <h2 className="text-2xl font-black">純正ブラケットを選択</h2>
+                <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
+                  ブラケットを表示
+                </span>
+                <span className="hidden rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 group-open:inline-flex">
+                  閉じる
+                </span>
+              </summary>
+
+              <div className="hidden space-y-4 group-open:block">
+                <div className="grid gap-3">
+                  {genuineBracketItems.map(renderOptionItem)}
+                </div>
+              </div>
+            </details>
+          )}
+
           {hottaBracketItems.length > 0 && (
             <details className="group">
               <summary className="mb-4 flex cursor-pointer list-none flex-wrap items-end justify-between gap-3 rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 [&::-webkit-details-marker]:hidden">
-                <p className="text-sm font-bold text-emerald-700">STEP 3</p>
+                <p className="text-sm font-bold text-emerald-700">
+                  STEP {stepNumbers.hotta}
+                </p>
                 <h2 className="text-2xl font-black">堀田機工ブラケットを選択</h2>
                 <span className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white group-open:hidden">
                   ブラケットを表示
