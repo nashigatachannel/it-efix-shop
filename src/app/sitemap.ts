@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const BASE_URL = "https://efix-shop.jp";
+const BASE_URL = "https://www.efix-shop.jp";
 
 const PUBLIC_ROUTES = [
   { path: "/", changeFrequency: "weekly", priority: 1.0 },

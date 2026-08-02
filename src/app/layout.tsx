@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://efix-shop.jp"),
+  metadataBase: new URL("https://www.efix-shop.jp"),
   title: "E-FIX | 農機具電動ステアリングシステム",
   description:
     "E-FIXは農業機械向け電動ステアリングシステム e-steer を販売しています。トラクターに後付けで自動操舵を導入し、高精度な直進作業を実現します。",
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "ja_JP",
-    url: "https://efix-shop.jp/",
+    url: "https://www.efix-shop.jp/",
     siteName: "E-FIX",
     title: "E-FIX | 農機具電動ステアリングシステム",
     description:
