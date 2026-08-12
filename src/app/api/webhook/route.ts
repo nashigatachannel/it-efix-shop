@@ -6,6 +6,7 @@ import {
   normalizeInvNumber,
   recordCardPayment,
 } from "@/lib/sales-sheet";
+import { notifyOwnerViaLine, formatJpy } from "@/lib/line-notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -216,7 +217,11 @@ async function upsertWebOrder(
   sheets: ReturnType<typeof google.sheets>,
   session: Stripe.Checkout.Session,
   eventType: string,
-): Promise<{ created: boolean; serialNumber: string | number }> {
+): Promise<{
+  created: boolean;
+  serialNumber: string | number;
+  paymentMethod: string;
+}> {
   const existing = await findWebOrderRowBySessionId(sheets, session.id);
   const existingSerial = existing ? Number(existing.values[0]) : NaN;
   const serialNumber = Number.isFinite(existingSerial)
@@ -242,7 +247,7 @@ async function upsertWebOrder(
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
-    return { created: false, serialNumber: row[0] };
+    return { created: false, serialNumber: row[0], paymentMethod };
   }
 
   await sheets.spreadsheets.values.append({
@@ -253,7 +258,49 @@ async function upsertWebOrder(
       values: [row],
     },
   });
-  return { created: true, serialNumber };
+  return { created: true, serialNumber, paymentMethod };
+}
+
+/**
+ * 店主向けLINE通知の本文を組み立てる。通知不要なイベント(expired等)は null。
+ */
+function buildOrderNotification(
+  session: Stripe.Checkout.Session,
+  eventType: string,
+  paymentMethod: string,
+): string | null {
+  const metadata = session.metadata ?? {};
+  const modelDisplay =
+    metadata.type === "custom_payment"
+      ? metadata.description ?? ""
+      : metadata.productNames || metadata.productIds || "";
+  const customerName = metadata.customerName ?? "不明";
+  const amountLabel = `${formatJpy(session.amount_total)}（${paymentMethod}）`;
+
+  let headline: string | null = null;
+  if (eventType === "checkout.session.async_payment_failed") {
+    headline = "銀行振込 支払い失敗";
+  } else if (eventType === "checkout.session.async_payment_succeeded") {
+    headline = "銀行振込 入金確認";
+  } else if (eventType === "checkout.session.completed") {
+    headline =
+      session.payment_status === "paid" ? "決済完了" : "注文受付（振込待ち）";
+  }
+  if (headline === null) return null;
+
+  const installLine =
+    metadata.selfInstall === "false"
+      ? `取付サービス利用（希望: ${[metadata.desiredDate1, metadata.desiredDate2, metadata.desiredDate3].filter(Boolean).join(", ") || "未指定"}）`
+      : "";
+
+  return [
+    `【EFIXショップ】${headline}`,
+    `${customerName} 様 / ${amountLabel}`,
+    modelDisplay,
+    installLine,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function upsertInstallationReservation(
@@ -479,7 +526,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           await handleInvoicePaymentCompleted(session);
         } catch (err) {
           console.error("Failed to record invoice card payment:", err);
+          await notifyOwnerViaLine(
+            `【EFIXショップ】⚠️請求書カード払いの記帳失敗\n${session.metadata?.customer_name ?? "不明"} 様 / ${formatJpy(session.amount_total)}\nINV: ${session.metadata?.inv_number ?? "不明"}\nsession: ${session.id}\nStripe決済自体は成立。EFIX販売スプシを手動確認して`,
+          );
         }
+        await notifyOwnerViaLine(
+          `【EFIXショップ】請求書カード払い 入金\n${session.metadata?.customer_name ?? "不明"} 様 / ${formatJpy(session.amount_total)}\nINV: ${session.metadata?.inv_number ?? "不明"}`,
+        );
       } else {
         // カードのみのフローのため async_payment_*/expired は発生しない想定。ログのみ残す。
         console.log(
@@ -489,11 +542,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ received: true });
     }
 
+    let orderNotification: string | null = null;
     try {
       const sheets = await getGoogleSheetsClient();
       const result = await upsertWebOrder(sheets, session, event.type);
       console.log(
         `Order ${result.created ? "written" : "updated"} in Sheets: serial=${result.serialNumber} session=${session.id} status=${paymentStatusForEvent(session, event.type)} (${event.type})`
+      );
+      orderNotification = buildOrderNotification(
+        session,
+        event.type,
+        result.paymentMethod,
       );
 
       // 機種保留マスタへの蓄積(retail 注文のみ)
@@ -512,6 +571,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     } catch (err) {
       console.error("Failed to write to Google Sheets:", err);
+      // 記帳に失敗しても決済は成立しているため、無通知で埋もれる前に必ず知らせる
+      orderNotification = `【EFIXショップ】⚠️受注のスプシ記帳失敗\n${session.metadata?.customerName ?? "不明"} 様 / ${formatJpy(session.amount_total)}\nsession: ${session.id}\nStripeダッシュボードで内容確認して`;
+    }
+    if (orderNotification) {
+      await notifyOwnerViaLine(orderNotification);
     }
   }
 

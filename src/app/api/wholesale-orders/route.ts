@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { sendHottaOrderEmail } from "@/lib/hotta-order";
+import { notifyOwnerViaLine, formatJpy } from "@/lib/line-notify";
 import { fetchPartnerById, getCurrentPartner } from "@/lib/partner-auth";
 import {
   DEFAULT_WHOLESALE_SPREADSHEET_ID,
@@ -358,6 +359,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ]),
       },
     });
+
+    await notifyOwnerViaLine(
+      [
+        "【EFIXショップ】卸注文受付",
+        `${companyName}（${customer.contactName}）様 / ${formatJpy(totalIncTax)}`,
+        detailText,
+        `受注番号: ${id}`,
+      ].join("\n"),
+    );
 
     let hottaMessage = "";
     let hottaOrderSent = false;
